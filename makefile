@@ -23,11 +23,11 @@ kernel:
 	$(MAKE) -C kernel/
 
 create_bin: boot kernel 
-	./boot/bin/FancyCat 0x200000 ./kernel/bin/kernel.b 0x600000 ./fs/bin/myfs
+	./boot/bin/FancyCat 0x200000 ./kernel/bin/kernel.b 
 	mv image.dat $(OUTPUT_DIR)/.
 	cat ./boot/bin/bootloader.b $(OUTPUT_DIR)/image.dat > $(OUTPUT_DIR)/kernel.bin
 
 emu: create_bin qemu
 
 qemu: 
-	qemu-system-i386 -s -m 1024 -cpu core2duo -drive file=$(OUTPUT_DIR)/kernel.bin,format=raw,cyls=200,heads=16,secs=63 -monitor stdio -serial /dev/pts/1 -net user -net nic,model=i82559er
+	qemu-system-i386 -s -m 1024 -cpu core2duo -drive file=$(OUTPUT_DIR)/kernel.bin,format=raw,cyls=200,heads=16,secs=63 -monitor stdio -serial /dev/pts/0 -net user -net nic,model=i82559er
