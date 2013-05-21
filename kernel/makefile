@@ -13,6 +13,7 @@ CFLAGS=-m64 \
 	   -Wformat \
 	   -ansi \
 	   -pedantic \
+	   -fno-builtin \
 	   -std=c99
 
 AS=as
@@ -39,7 +40,8 @@ clean:
 
 # TODO Separate the runtime compilation from the kernels compilation
 $(OBJ_DIR)/%.c.o : %.c
-	$(CC) $(DBG) $(CFLAGS) -c $^ -of$@
+	mkdir -p $(shell dirname $@)
+	$(CC) $(DBG) $(CFLAGS) -c $^ -o $@
 
 $(OBJ_DIR)/%.s.o : %.s
 	mkdir -p $(shell dirname $@)
