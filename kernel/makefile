@@ -11,7 +11,6 @@ CFLAGS=-m64 \
 	   -Wall \
 	   -Wextra \
 	   -Wformat \
-	   -ansi \
 	   -pedantic \
 	   -fno-builtin \
 	   -std=c99
@@ -35,23 +34,45 @@ PRE_KERNEL = $(OBJ_DIR)/src/arch/x86_64/prekernel.s.o
 all: kernel 
 
 clean:
-	/bin/rm -rf $(OBJ_DIR)/*
-	/bin/rm -rf $(OUTPUT_DIR)/*
+	@echo Cleaning Kernel
+	@/bin/rm -rf $(OBJ_DIR)/*
+	@/bin/rm -rf $(OUTPUT_DIR)/*
 
 # TODO Separate the runtime compilation from the kernels compilation
 $(OBJ_DIR)/%.c.o : %.c
-	mkdir -p $(shell dirname $@)
-	$(CC) $(DBG) $(CFLAGS) -c $^ -o $@
+	@echo " - Compiling" $^
+	@mkdir -p $(shell dirname $@)
+	@$(CC) $(DBG) $(CFLAGS) -c $^ -o $@
 
 $(OBJ_DIR)/%.s.o : %.s
-	mkdir -p $(shell dirname $@)
-	$(AS) $(AS_FLAGS) $^ -o $@
+	@echo " - Assembling" $^
+	@mkdir -p $(shell dirname $@)
+	@$(AS) $(AS_FLAGS) $^ -o $@
 
 .PHONY: kernel debug
 debug: DBG += -g
 
 debug: kernel
 
-kernel: $(KERNEL_OBJECTS)
+print_args:
+	@echo
+	@echo Compiler: $(CC)
+	@echo CFLAGS: $(CFLAGS)
+	@echo
+	@echo Assembler: $(AS)
+	@echo AFLAGS: $(AS_FLAGS)
+	@echo
+	@echo Linker: $(LD)
+	@echo LFLAGS: $(LD_FLAGS)
+	@echo
+
+kernel: print_args $(KERNEL_OBJECTS)
+	@echo
+	@echo ----------------------------
+	@echo Creating Kernel Binary Image
+	@echo ----------------------------
 	$(LD) $(LD_FLAGS) -T ./kernel.ld $(PRE_KERNEL) $(filter-out $(PRE_KERNEL),$(KERNEL_OBJECTS)) -o $(OUTPUT_DIR)/kernel.b
+	@echo ---------------------------
+	@echo Creating Kernel Debug Image
+	@echo ---------------------------
 	$(LD) $(LD_FLAGS_DBG) -T ./kernel.ld $(PRE_KERNEL) $(filter-out $(PRE_KERNEL),$(KERNEL_OBJECTS)) -o $(OUTPUT_DIR)/kernel.o

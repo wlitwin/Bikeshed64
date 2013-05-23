@@ -19,17 +19,20 @@ all: bootloader fancycat
 #obj/%.S.o : %.S
 
 clean:
-	/bin/rm -rf $(OBJ_DIR)/*
-	/bin/rm -rf $(OUTPUT_DIR)/*
+	@echo Cleaning Boot
+	@/bin/rm -rf $(OBJ_DIR)/*
+	@/bin/rm -rf $(OUTPUT_DIR)/*
 
 #bootloader: $(OUTPUT_DIR)/bootloader.b
 
 fancycat: $(OUTPUT_DIR)/FancyCat
 
 bootloader:
-	$(AS) $(AS_FLAGS) bootloader.s -o $(OBJ_DIR)/bootloader.o
-	$(LD) $(LD_FLAGS) $(OBJ_DIR)/bootloader.o -Tbootloader.ld -o $(OUTPUT_DIR)/bootloader.b
+	@echo Creating Bootloader
+	@$(AS) $(AS_FLAGS) bootloader.s -o $(OBJ_DIR)/bootloader.o
+	@$(LD) $(LD_FLAGS) $(OBJ_DIR)/bootloader.o -Tbootloader.ld -o $(OUTPUT_DIR)/bootloader.b
 
 
 $(OUTPUT_DIR)/FancyCat:
-	$(CC) $(C_FLAGS) FancyCat.c -o $(OUTPUT_DIR)/FancyCat
+	@echo Creating FancyCat
+	@$(CC) $(C_FLAGS) FancyCat.c -o $(OUTPUT_DIR)/FancyCat
