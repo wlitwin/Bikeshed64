@@ -3,7 +3,7 @@ OUTPUT_ARCH (i386:x86-64)
 
 SECTIONS {
 
-	. = 0xC0200000;
+	. = 0x00200000;
 	KERNEL_START = .;
 
 	.text : {
