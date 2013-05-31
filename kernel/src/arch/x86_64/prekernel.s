@@ -2,9 +2,15 @@
 PAE_BIT = 0x00020 # CR4 Physical Address Extension
 LME_BIT = 0x0100 # EFER Long Mode Enable
 
+VIDEO_RAM = 0xB8000
+
 KERNEL_LOAD_LOCATION = 0x200000
 KERNEL_BASE_LOCATION = 0x000000
 KERNEL_STACK_LOCATION = KERNEL_BASE_LOCATION + (KERNEL_LOAD_LOCATION - 0x4)
+
+/********************************************************
+ * GDT Information
+ *******************************************************/
 
 /* Need 64-bit GDT entries 
  * Align them to a dword boundary according to AMD 
@@ -12,17 +18,19 @@ KERNEL_STACK_LOCATION = KERNEL_BASE_LOCATION + (KERNEL_LOAD_LOCATION - 0x4)
  */
 .data
 .align 32
+.globl start_gdt_64
 start_gdt_64:
 
 null_selector:
 	.quad 0
 
 code_seg_64_compat:
-	
+	# TODO	
 data_seg_64_compat:
-
+	# TODO
 stack_seg_64_compat:
-	
+	# TODO	
+
 code_seg_64:
 	.word 0xFFFF
 	.word 0
@@ -46,8 +54,41 @@ gdt_64:
 	.word gdt_64_len
 	.quad start_gdt_64
 
+/********************************************************
+ * End GDT Information
+ *******************************************************/
+
+/********************************************************
+ * IDT Information
+ *******************************************************/
 idt_64:
-		
+	.word idt_64_len
+	.quad start_idt_64
+	
+.align 4096
+.globl start_idt_64
+start_idt_64:
+	.fill 512, 8, 0	# .fill only supports a size of 8, so we double the number
+end_idt_64:
+idt_64_len = end_idt_64 - start_idt_64
+
+/********************************************************
+ * End IDT Information
+ *******************************************************/
+
+string_cpuid_error:
+.asciz "CPUID is not supported, HALTING"
+
+string_not_64bit:
+.asciz "This is not a 64-bit processor, HALTING"
+
+print_offset:
+.word 0
+
+/********************************************************
+ * Paging Information
+ *******************************************************/
+
 PWT_BIT = 0x4 # Page-level write-through
 PCD_BIT = 0x8 # Page-level cache disable
 PRESENT = 0x1
@@ -60,14 +101,73 @@ kernel_PML4:
 
 .align 4096
 kernel_PDPTE:
-	.quad 0b110000011
+	#.quad 0b110000011
+	.quad (kernel_PDE + 0b11)
 	.fill 511, 8, 0
+
+.align 4096
+kernel_PDE:
+	.quad (0b010000011)
+	.quad (0x200000 + 0b010000011)
+	.fill 510, 8, 0
+
+/********************************************************
+ * End Paging Information
+ *******************************************************/
 
 .text
 .code32
 .align 4096
 .globl pre_kernel
 pre_kernel:
+	/* Before proceeding we need to learn some information
+	 * about the processor we're using. First it needs to
+	 * support the CPUID instruction because that will tell
+	 * us about the features this CPU supports.
+	 *
+	 * Taken from:
+	 * 	http://wiki.osdev.org/CPUID
+	 */
+	pushfl
+	popl %eax
+	movl %eax, %ecx
+	xorl $0x200000, %eax # Flip ID flag of EFLAGS
+	pushl %eax 
+	popfl 			   # Try to modify EFLAGS
+	pushfl
+	popl %eax		   # Check if it was modified
+	xorl %ecx, %eax     # Mask bit 21
+	shrl $21, %eax	   # Move bit 21 -> bit 0
+	andl $1, %eax	   # Test the bit
+	pushl %ecx
+	popfl			   # Restore EFLAGS
+
+	/* EAX contains 1 if CPUID is supported, 0 otherwise */
+	test %eax, %eax
+	jnz cpuid_supported
+
+	/* CPUID is not supported, we need to give some kind of error */
+	mov $string_cpuid_error, %eax
+	jmp print_error_and_halt
+
+cpuid_supported:
+
+	/* Before we continue we need to know if the CPU supports
+	 * certain things, like 64-bit mode and 1GiB pages.
+	 */
+	movl $0x80000001, %eax
+	cpuid
+
+	/* Check if this processor supports 64-bit mode */
+	testl $0x20000000, %edx
+	jnz ia32e_supported
+
+	/* 64-bit mode is not supported, give an error */
+	movl $string_not_64bit, %eax
+	jmp print_error_and_halt
+
+ia32e_supported:
+
 	/* IA32_EFER is cleared on reset 
 	 * The recommended sequence of initialization is:
 	 *  - Clear the paging bit (already done)
@@ -106,11 +206,68 @@ pre_kernel:
 	lgdt (gdt_64)	
 
 	/* Load the new IDT */
-
+	lidt (idt_64)
 
 	/* Jump + Enable Long Mode! */
 	jmp $8, $longmode_code
 
+/* Prints a string
+ *
+ * Params:
+ *   EAX - The address of the NULL terminated string to print
+ */
+print_string:
+	pushl %ebx
+	pushl %ecx
+	pushl %edx
+
+	movl $VIDEO_RAM, %ecx		# Get the video location
+	movw print_offset, %bx		# Get the current offset	
+
+ps_loop:
+	mov (%eax), %dl		# Grab a character
+
+	test %dl, %dl		# Test if the character is NULL
+	jz ps_done
+
+	inc %eax			# Advance to the next character
+
+	movb %dl, 0(%ecx, %ebx, 2) 	# Put the character on the screen
+	movb $0x9, 1(%ecx, %ebx, 2)	# Blue text, Black background
+	inc %ebx					# Advance the 'cursor'
+
+	# Make sure EBX stays in range
+	cmpl $(80*25), %ebx
+	jl ps_in_range
+
+	movl $0, %ebx				# Reset to 0
+	
+ps_in_range:
+	jmp ps_loop
+
+ps_done:
+	movw %bx, print_offset		# Save the current offset
+
+	popl %edx
+	popl %ecx
+	popl %ebx
+	ret
+
+/* Prints an error message to video ram and halts.
+ * For simplicity it assumes the error message is less
+ * than 80 characters (so it fits on one line).
+ *
+ * Params:
+ *   EAX - String location
+ */
+print_error_and_halt:
+	call print_string
+
+peat_done:
+	hlt
+	jmp peat_done
+
+/* Start of the 64-bit code */
 .code64
 longmode_code:
 	/* Setup kernel stack */
