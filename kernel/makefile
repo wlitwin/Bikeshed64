@@ -13,7 +13,9 @@ CFLAGS=-m64 \
 	   -Wformat \
 	   -pedantic \
 	   -fno-builtin \
-	   -std=c99
+	   -std=c99 \
+	   -Isrc/ \
+	   -DBIKESHED_X86_64
 
 AS=as
 AS_FLAGS=--64
