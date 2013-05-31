@@ -82,6 +82,9 @@ string_cpuid_error:
 string_not_64bit:
 .asciz "This is not a 64-bit processor, HALTING"
 
+string_ext_func_not_supported:
+.asciz "Processor does not support enough extended functions for CPUID, HALTING"
+
 print_offset:
 .word 0
 
@@ -113,6 +116,18 @@ kernel_PDE:
 
 /********************************************************
  * End Paging Information
+ *******************************************************/
+
+/********************************************************
+ * Processor Address Size Information
+ *******************************************************/
+processor_phys_bits:
+	.byte 0
+processor_virt_bits:
+	.byte 0
+
+/********************************************************
+ * End Processor Address Size Information
  *******************************************************/
 
 .text
@@ -152,6 +167,22 @@ pre_kernel:
 
 cpuid_supported:
 
+	/* Figure out the max CPUID command, must be at least 0x80000008 */
+	movl $0x80000000, %eax
+	cpuid
+
+	/* We need to support at least the 0x80000008 extended functions
+	 * for CPUID, this tells us the number of bits implemented for
+	 * physical and virtual addresses
+	 */
+	cmpl $0x80000008, %eax
+	jge extended_functions_supported
+
+	mov $string_ext_func_not_supported, %eax
+	jmp print_error_and_halt
+
+extended_functions_supported:
+
 	/* Before we continue we need to know if the CPU supports
 	 * certain things, like 64-bit mode and 1GiB pages.
 	 */
@@ -167,6 +198,20 @@ cpuid_supported:
 	jmp print_error_and_halt
 
 ia32e_supported:
+
+	/* Figure out how many address bits are supported by this processor
+	 * for virtual and physical addresses
+	 */
+	movl $0x80000008, %eax
+	cpuid
+
+	/* EAX [7:0]  - Physical address size
+	 * EAX [15:8] - Virtual address size
+	 */
+	hlt
+	movb %al, processor_phys_bits
+	shr $8, %eax
+	movb %al, processor_virt_bits
 
 	/* IA32_EFER is cleared on reset 
 	 * The recommended sequence of initialization is:
