@@ -12,6 +12,8 @@ extern uint8_t processor_virt_bits;
 
 void virt_memory_init()
 {
+	KERNEL_PML4 = &kernel_PML4;	
+
 	/* XXX - Temporarily here for debugging */
 	//init_serial_debug();	
 	init_text_mode();

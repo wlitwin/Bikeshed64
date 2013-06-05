@@ -5,7 +5,7 @@
 
 /* This is defined in prekernel.s
  */
-extern PML4_Entry kernel_PML4;
+extern PML4_Table kernel_PML4;
 
 /* This is defined in prekernel.s
  */
@@ -17,7 +17,7 @@ extern PD_Table kernel_PDT;
 
 /* Pointer to the current kernel PML4
  */
-PML4_Entry* KERNEL_PML4;
+PML4_Table* KERNEL_PML4;
 
 /* Initialize the virtual memory system, consequently it initializes
  * the physical memory system because that's needed by the virtual
