@@ -7,12 +7,11 @@
 #define BUFFER_LEN 21
 
 static void     _kprintf(const char* fmt, va_list ap);
-static int64_t  convert_octal(char buf[static BUFFER_LEN], int64_t value);
 static void     padstr(const char* str, int64_t len, int64_t width, uint8_t leftadjust, char padchar);
 static int64_t  convert_hexidecimal(char buf[static BUFFER_LEN], uint64_t value);
 static int64_t  convert_decimal_u(char buf[static BUFFER_LEN], uint64_t value);
 static int64_t  convert_decimal(char buf[static BUFFER_LEN], int64_t value);
-static int64_t  convert_octal(char buf[static BUFFER_LEN], int64_t value);
+static int64_t  convert_octal(char buf[static BUFFER_LEN], uint64_t value);
 static uint64_t string_length(const char* str);
 
 void kprintf(const char* format, ...)
@@ -225,7 +224,7 @@ int64_t convert_decimal(char buf[static BUFFER_LEN], int64_t value)
 	return index+1;
 }
 
-int64_t convert_octal(char buf[static BUFFER_LEN], int64_t value)
+int64_t convert_octal(char buf[static BUFFER_LEN], uint64_t value)
 {
 	int64_t index = BUFFER_LEN-1;
 	
