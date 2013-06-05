@@ -1,5 +1,6 @@
 CC=gcc
 CFLAGS=-m64 \
+	   -mcmodel=large \
 	   -ffreestanding \
 	   -nostdlib \
 	   -mno-red-zone \
@@ -18,7 +19,7 @@ CFLAGS=-m64 \
 	   -DBIKESHED_X86_64
 
 AS=as
-AS_FLAGS=--64
+AS_FLAGS=--64 -am
 
 LD=ld
 LD_FLAGS=-m elf_x86_64 --oformat=binary
