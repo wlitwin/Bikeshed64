@@ -36,4 +36,7 @@ create_bin: boot kernel
 emu: create_bin qemu
 
 qemu: 
-	qemu-system-x86_64 -s -m 1024 -cpu core2duo -drive file=$(OUTPUT_DIR)/kernel.bin,format=raw,cyls=200,heads=16,secs=63 -monitor stdio -serial /dev/pts/0 -net user -net nic,model=i82559er
+	qemu-system-x86_64 -s -m 512 -cpu core2duo -drive file=$(OUTPUT_DIR)/kernel.bin,format=raw,cyls=200,heads=16,secs=63 -monitor stdio -serial /dev/pts/1 -net user -net nic,model=i82559er
+
+qemu2: 
+	qemu-system-x86_64 -s -m 1024 -cpu core2duo -drive file=/dev/sdb,format=raw,cyls=200,heads=16,secs=63 -monitor stdio -serial /dev/pts/1 -net user -net nic,model=i82559er
