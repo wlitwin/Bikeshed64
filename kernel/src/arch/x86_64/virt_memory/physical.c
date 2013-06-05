@@ -178,6 +178,11 @@ void phys_memory_init()
 	uint8_t found_suitable_region = 0;
 	for (uint32_t i = 0; i < mmap_size; ++i)
 	{
+		if (mmap_array[i].type != TYPE_USABLE)
+		{
+			continue;
+		}
+
 		const uint64_t base_before = mmap_array[i].base;
 		const uint64_t length_before = mmap_array[i].length;
 
@@ -204,9 +209,9 @@ void phys_memory_init()
 			psi.num_pdpts = num_pdpts;
 			psi.space_needed = space_needed;
 
-			// Adjust this entries base and size
-			mmap_array[i].base += space_needed;
-			mmap_array[i].length -= space_needed;
+			// Adjust this entry's base and size
+			mmap_array[i].base = base + space_needed;
+			mmap_array[i].length = length - space_needed;
 
 			create_paging_structures(&psi);
 
@@ -224,9 +229,9 @@ void phys_memory_init()
 	setup_physical_allocator();
 	
 	kprintf("Total Usable RAM: %u MiB\n", total_usable_ram/_1_MIB);
-	kprintf("Need %d PDs\n", num_pds);
-	kprintf("Need %d PDPTs\n", num_pdpts);
-	kprintf("Need %d KiB space\n", space_needed/_1_KIB);
+	kprintf("Need %u PDs\n", num_pds);
+	kprintf("Need %u PDPTs\n", num_pdpts);
+	kprintf("Need %u KiB space\n", space_needed/_1_KIB);
 }
 
 /*
@@ -291,7 +296,7 @@ void create_paging_structures(const page_struct_info* psi)
 	PML4_Table* pml4_table = KERNEL_PML4;
 
 	// TODO rest of the PDPTs
-	for (uint64_t pml4_index = 1; pdpts_left > 0; --pdpts_left, ++pml4_index)
+	for (uint64_t pml4_index = 1; pdpts_left > 0 && pds_left > 0; --pdpts_left, ++pml4_index)
 	{
 		// Allocate a PDP Table
 		pdp_table = (PDP_Table*) alloc_ptr;
@@ -324,6 +329,8 @@ void create_paging_structures(const page_struct_info* psi)
 		}
 
 		pml4_table->entries[pml4_index] = (uint64_t)pdp_table | PML4_WRITABLE | PML4_PRESENT;	
+		// TODO replicate this mapping at the kernel's address space
+		// pml4_table->entries[pml4_index+256] = ...
 
 		// TODO invlpg
 	}
@@ -383,7 +390,7 @@ uint64_t get_total_usable_ram(void)
 		 *      into two separate regions
 		 */			
 		/* Case 1 */
-		if ((base < KERNEL_START) && max_addr <= KERNEL_END)
+		if (base < KERNEL_START && max_addr <= KERNEL_END)
 		{
 			// Update the length
 			mmap_array[i].length = KERNEL_START - base;
