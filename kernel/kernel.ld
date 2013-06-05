@@ -1,74 +1,71 @@
 ENTRY (pre_kernel)
 OUTPUT_ARCH (i386:x86-64)
+OUTPUT_FORMAT (elf64-x86-64)
 
 SECTIONS {
 
-	. = 0x00200000;
-	KERNEL_START = .;
+	. = 0x200000;
 
-	.text : {
+	text_prekernel ALIGN(0x1000) : AT(0x200000) {
+		prekernel_start = .;
+		*(.text_prekernel)
+		*(.text_prekernel.*)
+	}
+
+	data_prekernel ALIGN(0x1000) : {
+		*(.data_prekernel)
+		*(.data_prekernel.*)
+	}
+
+	virt = 0xFFFF800000000000;
+	. += virt;
+
+	.text ALIGN(0x1000) : AT(ADDR(.text) - virt) {
+		KERNEL_START = .;
 		code = .; _code = .; __code = .;
 		*(.text)
 		*(.text.*)
 	}
 
-	.ctors ALIGN(0x1000) : {
+	.ctors ALIGN(0x1000) : AT(ADDR(.ctors) - virt) {
 		start_of_ctors = .; 
 		*(.ctors) 
 		*(.ctors.*) 
 		end_of_ctors = .;
 	}
 
-	.dtors ALIGN(0x1000) : {
+	.dtors ALIGN(0x1000) : AT(ADDR(.dtors) - virt) {
 		start_of_dtors = .; 
 		*(.dtors) 
 		*(.dtors.*) 
 		end_of_dtors = .;
 	}
 
-	.data ALIGN(0x1000) : {
+	.data ALIGN(0x1000) : AT(ADDR(.data) - virt) {
 		data_start = .; __data_start = .;
 		data = .; _data = .; __data = .;
 		*(.data)
 		*(.data.*)
 	}
 
-	.tdata ALIGN(0x1000) : {
-		tls = .; _tls = .; __tls = .;
-		*(.tdata)
-		*(.tdata.*)
-		*(.gnu.linkonce.td.*)
-	}
-
-	.rodata ALIGN(0x1000) : {
+	.rodata ALIGN(0x1000) : AT(ADDR(.rodata ) - virt) {
 		*(.rodata)
 		*(.rodata.*)
 		*(.rel.rodata)
 		*(.rel.rodata.*)
 	}
 
-	.tbss ALIGN(0x1000) : {
-		tbss = .; _tbss = .; __tbss = .;
-		*(.tbss) /* Thread local storage stuff */
-		*(.tbss.*)
-		*(.gnu.linkonce.tb.*)
-		*(.tcommon)
-	}
-
-	.bss : ALIGN(0x1000) {
+	.bss ALIGN(0x1000) : AT(ADDR(.bss) - virt) {
 		sbss = .;
 		bss = .; _bss = .; __bss = .;
 		*(COMMON)
 		*(.bss)
 		*(.bss.*)
-	/*	*(.tbss) 
-		*(.tbss.*)
-		*(.tcommon)
-		*/
 		ebss = .;
 	}
 	end = .; _end = .; __end = .;
-	KERNEL_END = ALIGN(0x4);
+	. = ALIGN(0x8);
+	__KERNEL_END = . - virt;
 
 	/DISCARD/ :
 	{
