@@ -5,7 +5,7 @@ LME_BIT = 0x0100 # EFER Long Mode Enable
 VIDEO_RAM = 0xB8000
 
 KERNEL_LOAD_LOCATION = 0x200000
-KERNEL_BASE_LOCATION = 0x000000
+KERNEL_BASE_LOCATION = 0xFFFF800000000000
 KERNEL_STACK_LOCATION = KERNEL_BASE_LOCATION + (KERNEL_LOAD_LOCATION - 0x4)
 
 /********************************************************
@@ -16,7 +16,7 @@ KERNEL_STACK_LOCATION = KERNEL_BASE_LOCATION + (KERNEL_LOAD_LOCATION - 0x4)
  * Align them to a dword boundary according to AMD 
  * Systems Programming Guide
  */
-.data
+.section data_prekernel,"wa",@progbits
 .align 32
 .globl start_gdt_64
 start_gdt_64:
@@ -98,21 +98,49 @@ PRESENT = 0x1
 KERNEL_PML4_VALUE = 0b11
 
 .align 4096
+.globl kernel_PML4
 kernel_PML4:
 	.quad (kernel_PDPTE + KERNEL_PML4_VALUE)
-	.fill 511, 8, 0
+	.fill 255, 8, 0
+	.quad (kernel_PDPTE + KERNEL_PML4_VALUE)
+	.fill 255, 8, 0
 
 .align 4096
+.globl kernel_PDPTE
 kernel_PDPTE:
 	#.quad 0b110000011
-	.quad (kernel_PDE + 0b11)
+	.quad (kernel_PDT + 0b11)
 	.fill 511, 8, 0
 
+/* This macro craziness to so we can identiy map the first 1GiB
+ * of address space. This will make it easier for the physical
+ * memory manager to set itself up, as paging is already enabled,
+ * yet it has to move stuff around in non-virtual memory. The reason
+ * the macro had to be written out six times is because GAS has a
+ * problem with macro recursion greater than a depth of 100. The
+ * command to increase the depth was not immediately obvious so
+ * this was done as a work around.
+ */
 .align 4096
-kernel_PDE:
-	.quad (0b010000011)
+.globl kernel_PDT
+kernel_PDT:
+	/*.quad (0b010000011)
 	.quad (0x200000 + 0b010000011)
 	.fill 510, 8, 0
+	*/
+	.macro ident_map from=0, to=512, val=0
+	.quad (\val + 0b010000011)
+	.if \to-\from
+	ident_map "(\from+1)",\to,"(\val+0x200000)"
+	.endif
+	.endm
+
+	ident_map 0, 100, 0
+	ident_map 0, 100, 0xC800000
+	ident_map 0, 100, 0x19000000
+	ident_map 0, 100, 0x25800000
+	ident_map 0, 100, 0x32000000
+	ident_map 0, 12,  0x33800000
 
 /********************************************************
  * End Paging Information
@@ -121,8 +149,10 @@ kernel_PDE:
 /********************************************************
  * Processor Address Size Information
  *******************************************************/
+.globl processor_phys_bits
 processor_phys_bits:
 	.byte 0
+.globl processor_virt_bits
 processor_virt_bits:
 	.byte 0
 
@@ -130,7 +160,7 @@ processor_virt_bits:
  * End Processor Address Size Information
  *******************************************************/
 
-.text
+.section text_prekernel,"xa",@progbits
 .code32
 .align 4096
 .globl pre_kernel
@@ -208,7 +238,6 @@ ia32e_supported:
 	/* EAX [7:0]  - Physical address size
 	 * EAX [15:8] - Virtual address size
 	 */
-	hlt
 	movb %al, processor_phys_bits
 	shr $8, %eax
 	movb %al, processor_virt_bits
@@ -314,25 +343,27 @@ peat_done:
 
 /* Start of the 64-bit code */
 .code64
+.globl longmode_code
 longmode_code:
 	/* Setup kernel stack */
 	movq $KERNEL_STACK_LOCATION, %rsp
 	movq $KERNEL_STACK_LOCATION, %rbp
 
 	/* Clear the BSS section */
-	movq $sbss, %rdi
+	movabsq $sbss, %rdi
+	movabsq $ebss, %rax
 clear_bss_loop:
 	movq $0, (%rdi)
 	addq $8, %rdi
-	cmpq $ebss, %rdi
+	cmpq %rax, %rdi
 	jb clear_bss_loop
 
+	movabsq $kmain, %rax
 	/* Give control to the kernel */
-	call kmain
+	call *%rax
 
 	/* Kernel returned, wait forever */
 	cli
 kernel_returned:
 	hlt
 	jmp kernel_returned
-	
