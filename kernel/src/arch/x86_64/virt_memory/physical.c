@@ -1,85 +1,11 @@
 #include "physical.h"
 
 #include "paging.h"
-#include "inttypes.h"
-#include "stack.h"
+#include "phys_alloc.h"
 
 #include "arch/x86_64/panic.h"
 #include "arch/x86_64/kprintf.h"
 #include "arch/x86_64/virt_memory/types.h"
-
-#define MMAP_MAX_ENTRIES ((0x7C00 - 0x2D04) / 24) /* 24 byte entries for E280 BIOS function */
-
-#define KERNEL_START 0x100000
-#define KERNEL_END ((uint64_t)&__KERNEL_END)
-
-#define _1_KIB 1024ULL
-#define _1_MIB (1024ULL*_1_KIB)
-#define _2_MiB (2ULL*_1_MIB)
-#define _1_GIB (1024ULL*_1_MIB)
-#define _512_GIB (512ULL*_1_GIB)
-
-#define PDT_PER_PDPT 512ULL
-#define PDT_ENTRIES 512ULL
-#define PDPT_ENTRIES 512ULL
-
-#define ALIGN_2MIB(X) (((X) & 0xFFFFFFFFFFE00000) + _2_MiB)
-#define ALIGN_4KIB(X) (((X) & 0xFFFFFFFFFFFFF000) + 0x1000)
-
-#define KERNEL_BASE 0xFFFF800000000000
-
-#define PDT_PRESENT 0x1
-#define PDT_WRITABLE 0x2
-#define PDT_PAGE_SIZE 0x80
-
-#define PDPT_PRESENT 0x1
-#define PDPT_WRITABLE 0x2
-
-#define PML4_PRESENT 0x1
-#define PML4_WRITABLE 0x2
-
-//=============================================================================
-// Memory Map BIOS definitions
-//=============================================================================
-
-/* Memory Map Entries are given by the BIOS when we use the 0xE820
- * instruction. We need to convert this to something more useful 
- * and give it to the physical memory allocator.
- */
-
-/* Address of the start of the memory map array 
- *
- * Defined in bootloader.s
- */
-#define MMAP_ADDRESS 0x2D04
-
-/* Address of the array size 
- *
- * Defined in bootloader.s
- */
-#define MMAP_COUNT 0x2D00
-
-#define TYPE_USABLE 1
-#define TYPE_RESERVED 2
-#define TYPE_ACPI_RECLAIMABLE 3
-#define TYPE_ACPI_NVS 4
-#define TYPE_BAD_MEMORY 5
-
-typedef struct
-{
-	uint64_t base;
-	uint64_t length;
-	uint32_t type; // 1 - Usable RAM
-				   // 2 - Reserved
-				   // 3 - ACPI Reclaimable
-				   // 4 - ACPI NVS 
-				   // 5 - Bad Memory
-	uint32_t ACPI;
-} MMapEntry;
-
-COMPILE_ASSERT(sizeof(MMapEntry) == 24);
-
-//=============================================================================
 
 /* How many physical address bits the processor has
  *
@@ -88,12 +14,13 @@ COMPILE_ASSERT(sizeof(MMapEntry) == 24);
 extern uint8_t processor_phys_bits;
 extern uint8_t processor_virt_bits;
 
-/* This variable is located at the very end of the kernel
- * so we can place things after it's address in RAM.
- */
-extern uint64_t __KERNEL_END;
+typedef struct
+{
+	uint64_t total_usable_ram;
+	uint64_t highest_address;
+} ram_info;
 
-static uint64_t get_total_usable_ram(void);
+static void get_total_usable_ram(ram_info* info);
 
 typedef struct
 {
@@ -103,8 +30,6 @@ typedef struct
 	uint64_t num_pdpts;    // Number of PDP tables to make 
 	uint64_t space_needed; // How much memory this will take
 } page_struct_info;
-
-static void setup_physical_allocator(void);
 
 static void create_paging_structures(const page_struct_info* psi);
 
@@ -126,7 +51,12 @@ void phys_memory_init()
 
 	kprintf("Virt Bits: %d - Phys Bits: %d\n", processor_virt_bits, processor_phys_bits);
 
-	uint64_t total_usable_ram = get_total_usable_ram(); // In Bytes
+	ram_info info;
+	get_total_usable_ram(&info);
+
+	uint64_t total_usable_ram = info.total_usable_ram; // In Bytes
+
+	kprintf("highest address: 0x%x\n", info.highest_address);
 
 	/* Let's calculate how much memory we need for the paging structures so we
 	 * can do a mapping of all the available (usable) physical memory. We'll
@@ -139,16 +69,14 @@ void phys_memory_init()
 	// TODO - Figure out if we should unmap as well. The computer may have < 1GiB
 	//        of RAM installed. (although we wouldn't be able to unallocate anything
 	//        of value, we still need the 4KiB for the tables)
-	// The +_1_MIB is to fix the flooring that the integer division does
-	uint64_t num_pds = (total_usable_ram + _1_MIB) / _2_MiB;
-	if (num_pds >= PDT_ENTRIES)
+	// The +_512_MIB is to fix the flooring that the integer division does
+	uint64_t num_pds = (info.highest_address + _512_MiB) / _1_GIB;
+	if (num_pds >= 1)
 	{
-		num_pds -= PDT_ENTRIES;
+		--num_pds;
 	}
-	else
-	{
-		num_pds = 0;
-	}
+
+	kprintf("Total usable RAM: 0x%x\n", total_usable_ram);
 
 	// PDPTs store 512 pointers to PDs
 	// The +1 is to correct the flooring done by integer division
@@ -160,6 +88,9 @@ void phys_memory_init()
 
 	// Calculate how many bytes we need for all of this information
 	const uint64_t space_needed = sizeof(PD_Table)*num_pds + sizeof(PDP_Table)*num_pdpts;
+
+	kprintf("Space for paging structures: %u KiB %u PD %u PDP\n", 
+			space_needed/_1_KIB, num_pds, num_pdpts);
 
 	// Let's try to place this whole table directly after the kernel. This may not always
 	// work, but for now it's the simplest approach. We'll display an error if we cannot
@@ -186,6 +117,13 @@ void phys_memory_init()
 		const uint64_t base_before = mmap_array[i].base;
 		const uint64_t length_before = mmap_array[i].length;
 
+		// We're using (and aligning to) 4KiB sizes, so we must have
+		// at least that much space available
+		if (length_before < _4_KIB)
+		{
+			continue;
+		}
+
 		// Makes the create_paging_structures() code easier if we align
 		// the current base to a 4KiB boundary (which is required for
 		// all paging structures)
@@ -201,6 +139,8 @@ void phys_memory_init()
 
 		if (base >= KERNEL_END && length >= space_needed)
 		{
+
+			//kprintf("Using Region: 0x%x - Length: 0x%x\n", base, length);
 			page_struct_info psi;
 
 			psi.base = base;
@@ -212,6 +152,8 @@ void phys_memory_init()
 			// Adjust this entry's base and size
 			mmap_array[i].base = base + space_needed;
 			mmap_array[i].length = length - space_needed;
+
+			//kprintf("Updated size: 0x%x - Length: 0x%x\n", mmap_array[i].base, mmap_array[i].length);
 
 			create_paging_structures(&psi);
 
@@ -275,82 +217,89 @@ void create_paging_structures(const page_struct_info* psi)
 	// 0 has already been mapped from 0-1GiB
 	for (uint32_t pdpt_index = 1; pdpt_index < PDT_PER_PDPT; ++pdpt_index)
 	{
+		if (pds_left == 0)
+		{
+			break;
+		}
+
 		PD_Table* pd_table = (PD_Table*) alloc_ptr;	
 		alloc_ptr += sizeof(PD_Table);
+		--pds_left;
 
 		// Clear this entry
 		memset(pd_table, 0, sizeof(PD_Table));
 
-		for (uint32_t j = 0; j < PDT_ENTRIES && pds_left > 0; ++j, --pds_left)
+		pdp_table->entries[pdpt_index] = (uint64_t)pd_table | PDPT_WRITABLE | PDPT_PRESENT;
+		invlpg(pd_table);
+
+		for (uint32_t j = 0; j < PDT_ENTRIES; ++j)
 		{
-			pd_table->entries[j] = phys_address | PDT_PAGE_SIZE | PDT_WRITABLE | PDT_PRESENT;		
+			pd_table->entries[j] = phys_address | PDT_PAGE_SIZE | PDT_WRITABLE | PDT_PRESENT;
+			invlpg(phys_address);
 			phys_address += _2_MiB;
 
 			// TODO invlpg
 		}
-
-		pdp_table->entries[pdpt_index] = (uint64_t)pd_table | PDPT_WRITABLE | PDPT_PRESENT;
+		invlpg(pd_table);
 	}
 
 	// Defined in paging.h
 	PML4_Table* pml4_table = KERNEL_PML4;
 
 	// TODO rest of the PDPTs
-	for (uint64_t pml4_index = 1; pdpts_left > 0 && pds_left > 0; --pdpts_left, ++pml4_index)
+	for (uint64_t pml4_index = 1; pml4_index < PML4_ENTRIES && pdpts_left > 0; ++pml4_index)
 	{
+		kprintf("Entered PML4 LOOP!\n");
+		if (pdpts_left == 0 || pds_left == 0)
+		{
+			break;
+		}
+
 		// Allocate a PDP Table
 		pdp_table = (PDP_Table*) alloc_ptr;
 		alloc_ptr += sizeof(PDP_Table);
+		--pdpts_left;
 
 		// Clear the PDP Table
 		memset(pdp_table, 0, sizeof(PDP_Table));
 
+		pml4_table->entries[pml4_index] = (uint64_t)pdp_table | PML4_WRITABLE | PML4_PRESENT;	
+		// TODO replicate this mapping at the kernel's address space
+		// pml4_table->entries[pml4_index+256] = ...
+		invlpg(pdp_table);
+		// TODO invlpg
+
 		// Create this many Page Directory Tables
-		for (uint32_t i = 0; i < PDPT_ENTRIES && pds_left > 0; ++i)
+		for (uint32_t i = 0; i < PDPT_ENTRIES; ++i)
 		{
+			if (pds_left == 0)
+			{
+				break;
+			}
+
 			PD_Table* pd_table = (PD_Table*) alloc_ptr;
 			alloc_ptr += sizeof(PD_Table);
+			--pds_left;
 
 			// Clear the PD Table
 			memset(pd_table, 0, sizeof(PD_Table));
 
+			pdp_table->entries[i] = (uint64_t)pd_table | PDPT_WRITABLE | PDPT_PRESENT;
+			
+			// TODO invlpg
+			invlpg(pd_table);
+
 			// Loop through the PD Tables needed
-			for (uint32_t j = 0; j < PDT_ENTRIES && pds_left > 0; ++j, --pds_left)
+			for (uint32_t j = 0; j < PDT_ENTRIES; ++j)
 			{
 				pd_table->entries[j] = phys_address | PDT_PAGE_SIZE | PDT_WRITABLE | PDT_PRESENT;
+				invlpg(phys_address);
 				phys_address += _2_MiB;
 
 				// TODO invlpg
 			}
-
-			pdp_table->entries[i] = (uint64_t)pd_table | PDPT_WRITABLE | PDPT_PRESENT;
-			
-			// TODO invlpg
 		}
-
-		pml4_table->entries[pml4_index] = (uint64_t)pdp_table | PML4_WRITABLE | PML4_PRESENT;	
-		// TODO replicate this mapping at the kernel's address space
-		// pml4_table->entries[pml4_index+256] = ...
-
-		// TODO invlpg
 	}
-}
-
-/* 
- */
-void setup_physical_allocator()
-{
-	// We have two separate lists, one for 4KiB segments and one for 2MiB 
-	// segments. If more 4KiB segments are needed, then a 2MiB segment is
-	// split into smaller 4KiB segments.
-	
-	const uint32_t mmap_size = *((uint32_t*) MMAP_COUNT);
-	MMapEntry* mmap_array = (MMapEntry*) MMAP_ADDRESS;
-
-	// All of physical memory is mapped starting at the kernels half of the
-	// address space. Therefore in order to get a physical address the kernel's
-	// base address needs to be added to it.
-
 }
 
 /* This function will determine the amount of physical RAM available for general
@@ -362,7 +311,7 @@ void setup_physical_allocator()
  * existing entries. Therefore any old values from the MMAP_ARRAY or MMAP_COUNT
  * locations should not be used, new values should be fetched.
  */
-uint64_t get_total_usable_ram(void)
+void get_total_usable_ram(ram_info* info)
 {
 	/* Before we can continue we need to check what the BIOS has told us
 	 * is available for general use.
@@ -371,6 +320,7 @@ uint64_t get_total_usable_ram(void)
 	MMapEntry* mmap_array = (MMapEntry*) MMAP_ADDRESS;
 
 	uint32_t mmap_add_index = mmap_size;
+	uint64_t highest_address = 0;
 	uint64_t total_usable_ram = 0;
 
 	for (uint32_t i = 0; i < mmap_size; ++i)
@@ -378,6 +328,16 @@ uint64_t get_total_usable_ram(void)
 		const uint64_t base = mmap_array[i].base;
 		const uint64_t length = mmap_array[i].length;
 		const uint64_t max_addr = base + length;
+
+		if (mmap_array[i].type != TYPE_USABLE)
+		{
+			kprintf("%d - Base: 0x%x - Length: 0x%x - Type: %d - Skip\n", 
+					i, 
+					mmap_array[i].base, 
+					mmap_array[i],length, 
+					mmap_array[i].type);
+			continue;
+		}
 
 		/* Check if this memory region conflicts with the kernel. If it does
 		 * we may need to split it into two regions and adjust the mmap_count.
@@ -390,14 +350,16 @@ uint64_t get_total_usable_ram(void)
 		 *      into two separate regions
 		 */			
 		/* Case 1 */
-		if (base < KERNEL_START && max_addr <= KERNEL_END)
+		if (base < KERNEL_START && max_addr > KERNEL_START)
 		{
+			kprintf("Case 1: ");
 			// Update the length
 			mmap_array[i].length = KERNEL_START - base;
 		}
 		/* Case 2 */
 		else if (base < KERNEL_END && max_addr > KERNEL_END)
 		{
+			kprintf("Case 2: ");
 			// Update the base and length
 			mmap_array[i].base = KERNEL_END;
 			mmap_array[i].length = max_addr - base;
@@ -405,6 +367,7 @@ uint64_t get_total_usable_ram(void)
 		/* Case 3 */
 		else if (base >= KERNEL_START && max_addr <= KERNEL_END)
 		{
+			kprintf("Case 3: ");
 			// We need to completely remove this region, just mark
 			// its type as reserved so we don't use it later
 			mmap_array[i].type = TYPE_RESERVED;
@@ -412,6 +375,7 @@ uint64_t get_total_usable_ram(void)
 		/* Case 4 */
 		else if (base < KERNEL_START && max_addr > KERNEL_END)
 		{
+			kprintf("Case 4: ");
 			// The hardest case, we have to create a new entry
 			// in the mmap_array. But we need to make sure we
 			// don't add too many entries
@@ -446,9 +410,18 @@ uint64_t get_total_usable_ram(void)
 				mmap_array[i],length, 
 				mmap_array[i].type);
 
+		// We need to check a second time because one of the cases above
+		// may change the type of the mapping to reserved if it overlaps
+		// the kernel
 		if (mmap_array[i].type == TYPE_USABLE)
 		{
 			total_usable_ram += mmap_array[i].length;
+
+			const uint64_t address = mmap_array[i].base + mmap_array[i].length;
+			if (address > highest_address)
+			{
+				highest_address = address;
+			}
 		}
 	}
 
@@ -462,11 +435,18 @@ uint64_t get_total_usable_ram(void)
 				mmap_array[i].base, 
 				mmap_array[i].length, 
 				mmap_array[i].type);
+
+		const uint64_t address = mmap_array[i].base + mmap_array[i].length;
+		if (address > highest_address)
+		{
+			highest_address = address;
+		}
 	}
 
 	// Update the mmap_size value
 	*((uint32_t*) MMAP_COUNT) = mmap_add_index;
 
-	// Return the amount of available ram
-	return total_usable_ram;
+	// Fill in the amount of available ram
+	info->total_usable_ram = total_usable_ram;
+	info->highest_address = highest_address;
 }
