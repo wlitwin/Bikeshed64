@@ -124,23 +124,11 @@ kernel_PDPTE:
 .align 4096
 .globl kernel_PDT
 kernel_PDT:
-	/*.quad (0b010000011)
-	.quad (0x200000 + 0b010000011)
-	.fill 510, 8, 0
-	*/
-	.macro ident_map from=0, to=512, val=0
-	.quad (\val + 0b010000011)
-	.if \to-\from
-	ident_map "(\from+1)",\to,"(\val+0x200000)"
-	.endif
-	.endm
-
-	ident_map 0, 100, 0
-	ident_map 0, 100, 0xC800000
-	ident_map 0, 100, 0x19000000
-	ident_map 0, 100, 0x25800000
-	ident_map 0, 100, 0x32000000
-	ident_map 0, 12,  0x33800000
+	START_VAL = 0
+	.rept 512
+	.quad START_VAL + 0b010000011
+	START_VAL = START_VAL + 0x200000
+	.endr
 
 /********************************************************
  * End Paging Information
