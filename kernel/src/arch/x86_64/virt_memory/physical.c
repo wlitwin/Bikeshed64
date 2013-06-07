@@ -3,6 +3,8 @@
 #include "paging.h"
 #include "phys_alloc.h"
 
+#include "kernel/klib.h"
+
 #include "arch/x86_64/panic.h"
 #include "arch/x86_64/kprintf.h"
 #include "arch/x86_64/virt_memory/types.h"
@@ -174,19 +176,6 @@ void phys_memory_init()
 	kprintf("Need %u PDs\n", num_pds);
 	kprintf("Need %u PDPTs\n", num_pdpts);
 	kprintf("Need %u KiB space\n", space_needed/_1_KIB);
-}
-
-/*
- */
-void memset(void* ptr, const uint8_t val, uint64_t size)
-{
-	uint8_t* p = (uint8_t*) ptr;
-	while (size > 0)
-	{
-		*p = val;
-		++p;
-		--size;
-	}
 }
 
 /* This function creates a virtual mapping to all of physical memory inside of
