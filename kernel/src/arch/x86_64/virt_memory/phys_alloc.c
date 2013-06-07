@@ -228,10 +228,15 @@ void* phys_alloc_4KIB()
 
 void phys_free_4KIB(void* ptr)
 {
-	// Figure out who the pool it belongs to	
+	// Figure out which pool it belongs to	
 	Pool* pool = (Pool*) MASK_2MIB(ptr);
 
 	pool_free(pool, ptr);
+
+	if (pool_4KIB == NULL)
+	{
+		panic("phys_free_4KIB bad free");
+	}
 
 	// Check if this pool is already in the pool list	
 	if (pool->on_list && pool_full(pool))
@@ -243,7 +248,10 @@ void phys_free_4KIB(void* ptr)
 		{
 			// It's the head of the list
 			pool_4KIB = pool_4KIB->next;
-			pool_4KIB->prev = NULL;
+			if (pool_4KIB != NULL)
+			{
+				pool_4KIB->prev = NULL;
+			}
 		}
 		else
 		{
@@ -271,6 +279,7 @@ void phys_free_4KIB(void* ptr)
 		// Add to the head of the list
 		pool_4KIB->prev = pool;
 		pool->next = pool_4KIB;
+		pool->prev = NULL;
 
 		pool_4KIB = pool;
 		pool_4KIB->on_list = 1;
