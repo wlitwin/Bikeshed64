@@ -6,12 +6,27 @@
 
 #include "inttypes.h"
 
+#include "arch/x86_64/panic.h"
 #include "arch/x86_64/kprintf.h"
 
 static Stack stack_2MIB;
-static Stack stack_4KIB;
+
+typedef struct _Pool
+{
+	Stack free_stack;
+	void* implicit_next;
+	void* max_address;
+	
+	struct _Pool* next;
+	struct _Pool* prev;
+
+	uint8_t on_list;
+} Pool;
+
+static Pool* pool_4KIB;
 
 static void test_2MIB_alloc(void);
+static void test_4KIB_alloc(void);
 
 /* 
  */
@@ -29,7 +44,7 @@ void setup_physical_allocator()
 	// base address needs to be added to it.
 	
 	stack_init(&stack_2MIB);
-	stack_init(&stack_4KIB);
+	pool_4KIB = NULL;
 
 	uint64_t wasted_ram = 0;
 	uint64_t allocatable_ram = 0;
@@ -60,34 +75,11 @@ void setup_physical_allocator()
 			continue;
 		}
 
-		kprintf("Old: 0x%x - 0x%x\n", base_orig, length_orig);
-		kprintf("New: 0x%x - 0x%x\n", base, length);
-
 		// Okay we can place something here
 		uint64_t count = 0;
 		do
 		{
-			// Check if the stack already contains this node
-			//kprintf("%u Base: 0x%x - Left: 0x%x \n", count, base, length);
-			/*StackNode* cur1 = stack_2MIB.start;
-			for (uint64_t i = 0; i < stack_2MIB.size; ++i)
-			{
-				StackNode* cur2 = stack_2MIB.start;
-				for (uint64_t j = 0; j < stack_2MIB.size; ++j)
-				{
-					if (cur1 == cur2 && i != j)
-					{
-						kprintf("PROBLEM: I1: %u - I2: %u  \n", i, j);
-						kprintf("Address: 0x%x - 0x%x \n", cur1, cur2);
-						__asm__("hlt");
-					}
-					cur2 = cur2->next;
-				}
-				cur1 = cur1->next;
-			}
-			*/
-
-			StackNode* node = (StackNode*) base;
+			StackNode* node = (StackNode*) (base + KERNEL_BASE);
 			stack_push(&stack_2MIB, node);
 			++count;
 			allocatable_ram += _2_MiB;
@@ -103,23 +95,40 @@ void setup_physical_allocator()
 	kprintf("Wasted: %u bytes (%u KiB) of RAM\n", wasted_ram, wasted_ram/_1_KIB);
 	kprintf("Total allocatable RAM: %u MiB\n", allocatable_ram/_1_MIB);
 
-	test_2MIB_alloc();
+	//test_2MIB_alloc();
+	//test_4KIB_alloc();
 }
 
 void test_2MIB_alloc()
 {
-	kprintf("Stack Size: %u  \n", stack_2MIB.size);
+	kprintf("Stack Size: %u  \n", stack_size(&stack_2MIB));
 
 	void* ptr = phys_alloc_2MIB();
 	while (ptr != NULL)
 	{
 		uint64_t* p = (uint64_t*)ptr;
-		kprintf("Address: 0x%x - Left: %u   \n", p, stack_2MIB.size);
+		kprintf("Address: 0x%x - Left: %u   \n", p, stack_size(&stack_2MIB));
 		*p = 10;
 		ptr = phys_alloc_2MIB();
 	}
 
 	kprintf("Passed 2MiB Test            \n");
+	__asm__("hlt");
+}
+
+void test_4KIB_alloc()
+{
+	void* ptr = phys_alloc_4KIB();
+	kprintf("Start: 0x%x  \n", ptr);
+	while (ptr != NULL)
+	{
+		uint64_t* p = (uint64_t*)ptr;
+		//kprintf("Address: 0x%x\n", p);
+		*p = 10;
+		ptr = phys_alloc_4KIB();
+	}
+
+	kprintf("Passed 4KiB Test            \n");
 	__asm__("hlt");
 }
 
@@ -133,34 +142,137 @@ void phys_free_2MIB(void* ptr)
 	stack_push(&stack_2MIB, (void*)MASK_2MIB((uint64_t)ptr));
 }
 
-typedef struct
+static void pool_init(Pool* pool)
 {
-	uint32_t num_allocated;
-	uint32_t max_available;
-	void* implicit_next;
-} Pool;
+	stack_init(&pool->free_stack);	
+	pool->implicit_next = (void*) ((uint64_t)pool + _4_KIB);
+	pool->max_address = (void*) ((uint64_t)pool + _2_MiB);
+	pool->next = NULL;
+	pool->prev = NULL;
+	pool->on_list = 0;
+}
+
+static uint8_t pool_empty(Pool* pool)
+{
+	return stack_empty(&pool->free_stack) 
+		&& pool->implicit_next >= pool->max_address;
+}
+
+static uint8_t pool_full(Pool* pool)
+{
+	if (pool->implicit_next < pool->max_address)
+	{
+		panic("Something wrong with pool!");
+	}
+
+	return stack_size(&pool->free_stack) == 511;
+}
+
+static void pool_free(Pool* pool, void* ptr)
+{
+	if (ptr <= (void*)pool || ptr >= pool->max_address)
+	{
+		panic("Pool freeing bad ptr");
+	}
+
+	stack_push(&pool->free_stack, (void*) MASK_4KIB(ptr));
+}
+
+static void* pool_alloc(Pool* pool)
+{
+	if (pool_empty(pool))
+	{
+		panic("Trying to allocate from empty pool!");
+	}
+
+	if (!stack_empty(&pool->free_stack))
+	{
+		return stack_pop(&pool->free_stack);
+	}
+	else
+	{
+		void* retVal = pool->implicit_next;
+		pool->implicit_next = (void*) ((uint64_t)pool->implicit_next + _4_KIB);
+
+		return retVal;
+	}
+}
 
 void* phys_alloc_4KIB()
 {
-	if (!stack_empty(&stack_4KIB))
+	if (pool_4KIB == NULL)
 	{
-		return stack_pop(&stack_4KIB);
-	}
-	else if (!stack_empty(&stack_2MIB))
-	{
-		// Create a new 4KIB pool
-		Pool* pool = (Pool*)stack_pop(&stack_2MIB);
+		pool_4KIB = (Pool*) phys_alloc_2MIB();
+		if (pool_4KIB == NULL)
+		{
+			return NULL;
+		}
 
-		// The first entry in the pool does book keeping
-		pool->num_allocated = 0;
-		pool->max_available = (_2_MiB / _4_KIB) - 1;
-		pool->implicit_next = (void*)((uint64_t)pool + _4_KIB);
+		pool_init(pool_4KIB);
+		pool_4KIB->on_list = 1;
 	}
 
-	return NULL;
+	void* retVal = pool_alloc(pool_4KIB);	
+	if (pool_empty(pool_4KIB))
+	{
+		Pool* p_next = pool_4KIB->next;
+		pool_4KIB->on_list = 0;
+		pool_4KIB->next = NULL;
+		pool_4KIB->prev = NULL;
+
+		pool_4KIB = p_next;
+	}
+
+	return retVal;
 }
 
 void phys_free_4KIB(void* ptr)
 {
-	
+	// Figure out who the pool it belongs to	
+	Pool* pool = (Pool*) MASK_2MIB(ptr);
+
+	pool_free(pool, ptr);
+
+	// Check if this pool is already in the pool list	
+	if (pool->on_list && pool_full(pool))
+	{
+		// We need to remove it from the list and free the 2MIB
+		// chunk of memory it's using
+
+		if (pool_4KIB == pool)
+		{
+			// It's the head of the list
+			pool_4KIB = pool_4KIB->next;
+			pool_4KIB->prev = NULL;
+		}
+		else
+		{
+			// It's in the middle of the list
+			Pool* p_next = pool->next;	
+			Pool* p_prev = pool->prev;
+
+			if (p_next != NULL)
+			{
+				p_next->prev = p_prev;
+			}
+
+			if (p_prev != NULL)
+			{
+				p_prev->next = p_next;
+			}
+		}
+
+		// Reset the pool just in case
+		pool_init(pool);
+		phys_free_2MIB(pool);
+	}
+	else if (!pool->on_list)
+	{
+		// Add to the head of the list
+		pool_4KIB->prev = pool;
+		pool->next = pool_4KIB;
+
+		pool_4KIB = pool;
+		pool_4KIB->on_list = 1;
+	}
 }

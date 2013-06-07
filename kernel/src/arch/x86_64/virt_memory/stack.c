@@ -1,5 +1,11 @@
 #include "stack.h"
 
+
+uint64_t stack_size(Stack* stack)
+{
+	return stack->size;
+}
+
 void stack_init(Stack* stack)
 {
 	stack->size = 0;
