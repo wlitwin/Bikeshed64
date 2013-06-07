@@ -3,6 +3,8 @@
 
 #include "safety.h"
 
+#define NULL ((void*)0)
+
 typedef unsigned long uint64_t;
 COMPILE_ASSERT(sizeof(uint64_t) == 8);
 
