@@ -20,8 +20,8 @@
 #define ALIGN_2MIB(X) (((X) & 0xFFFFFFFFFFE00000) + ((((X) & 0x1FFFFF) > 0) * _2_MiB))
 #define ALIGN_4KIB(X) (((X) & 0xFFFFFFFFFFFFF000) + ((((X) & 0xFFF) > 0) * _4_KIB))
 
-#define MASK_2MIB(X) ((X) & 0xFFFFFFFFFFE00000)
-#define MASK_4KIB(X) ((X) & 0xFFFFFFFFFFFFF000)
+#define MASK_2MIB(X) (((uint64_t)X) & 0xFFFFFFFFFFE00000)
+#define MASK_4KIB(X) (((uint64_t)X) & 0xFFFFFFFFFFFFF000)
 
 #define PDT_PRESENT 0x1
 #define PDT_WRITABLE 0x2
@@ -59,5 +59,13 @@ PML4_Table* KERNEL_PML4;
  * and is a valid paging structure that can be used inside CR3.
  */
 void virt_memory_init(void);
+
+uint8_t virt_map_page(PML4_Table* table, const uint64_t virt_addr, const uint64_t flags);
+
+void virt_unmap_page(PML4_Table* table, uint64_t virt_addr);
+
+void virt_cleanup_page(PML4_Table* table);
+
+PML4_Table* virt_clone_mapping(const PML4_Table* other);
 
 #endif
