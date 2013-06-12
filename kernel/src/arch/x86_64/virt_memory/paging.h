@@ -23,6 +23,15 @@
 #define MASK_2MIB(X) (((uint64_t)X) & 0xFFFFFFFFFFE00000)
 #define MASK_4KIB(X) (((uint64_t)X) & 0xFFFFFFFFFFFFF000)
 
+#define PAGE_RW 0x2
+#define PAGE_USER 0x4
+
+#define PAGE_SMALL 0x1
+#define PAGE_LARGE 0x2
+
+#define PT_PRESENT 0x1
+#define PT_WRITABLE 0x2
+
 #define PDT_PRESENT 0x1
 #define PDT_WRITABLE 0x2
 #define PDT_PAGE_SIZE 0x80
@@ -60,12 +69,48 @@ PML4_Table* KERNEL_PML4;
  */
 void virt_memory_init(void);
 
-uint8_t virt_map_page(PML4_Table* table, const uint64_t virt_addr, const uint64_t flags);
+/* Creates a mapping from the virtual address to a free physical address
+ * so that the virtual address will be valid.
+ *
+ * Parameters:
+ *    table - The PML4 table, the top most paging structure
+ *    virt_addr - The virtual address to map to
+ *    flags - The permissions for this page
+ *    page_size - Whether to map 4KiB or 2MiB to the virtual address
+ *
+ * Returns:
+ *    1 if successfully mapped, 0 if an allocation failed
+ */
+uint8_t virt_map_page(PML4_Table* table, const uint64_t virt_addr, 
+						const uint64_t flags, const uint64_t page_size);
 
+/* Unmap a virtual address
+ *
+ * Parameters:
+ *    table - The PML4 table, the top most paging structure
+ *    virt_addr - The virtual address to unmap
+ */
 void virt_unmap_page(PML4_Table* table, uint64_t virt_addr);
 
-void virt_cleanup_page(PML4_Table* table);
+/* Completely deletes all paging structures in the given hierarchy.
+ *
+ * Parameters:
+ *    table - The PML4 table, the top most paging structure
+ */
+void virt_cleanup_table(PML4_Table* table);
 
+/* Clones a PML4 mapping. This does a copy-on-write clone. So
+ * only the entry values are copied, but not the pages that are
+ * pointed to by the entries. Once an entry is written to then
+ * a page fault will occur and the actual copy will happen.
+ *
+ * Parameters:
+ *    other - The PML4 table to create a copy of
+ *
+ * Returns:
+ *    A new PML4 table that has the same mappings as the given one,
+ *    or NULL if space for a new PML4 table could not be allocated.
+ */
 PML4_Table* virt_clone_mapping(const PML4_Table* other);
 
 #endif
