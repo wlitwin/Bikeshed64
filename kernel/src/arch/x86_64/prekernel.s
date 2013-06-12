@@ -23,33 +23,36 @@ start_gdt_64:
 
 null_selector:
 	.quad 0
-
-code_seg_64_compat:
-	# TODO	
-data_seg_64_compat:
-	# TODO
-stack_seg_64_compat:
-	# TODO	
+	.quad 0
 
 code_seg_64:
-	.word 0xFFFF
-	.word 0
+	.hword 0
+	.hword 0
 	.byte 0
 	.byte 0b10011000
 	.byte 0b00100000
 	.byte 0
+	# Align to 16-bytes
+	.quad 0
 
 data_seg_64:
-	.word 0xFFFF
-	.word 0
+	.hword 0xFFFF
+	.hword 0
 	.byte 0
 	.byte 0b10000000
 	.byte 0b00001111
 	.byte 0
+	# Align to 16 bytes
+	.quad 0
+
+.globl tss_seg_64
+tss_seg_64:
+	.fill 2, 8, 0 # 16-byte descriptor in 64-bit mode
 
 end_gdt_64:
 gdt_64_len = end_gdt_64 - start_gdt_64
 
+.align 16
 gdt_64:
 	.word gdt_64_len
 	.quad start_gdt_64
@@ -61,6 +64,7 @@ gdt_64:
 /********************************************************
  * IDT Information
  *******************************************************/
+.align 16
 idt_64:
 	.word idt_64_len
 	.quad start_idt_64
@@ -271,7 +275,7 @@ ia32e_supported:
 	lidt (idt_64)
 
 	/* Jump + Enable Long Mode! */
-	jmp $8, $longmode_code
+	jmp $0x10, $longmode_code
 
 /* Prints a string
  *
