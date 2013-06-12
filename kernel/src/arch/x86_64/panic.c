@@ -3,9 +3,9 @@
 void panic(const char* message)
 {
 	kprintf("%s - PANIC  \n", message);
-	__asm__("cli");
+	__asm__ volatile ("cli");
 	while (1)
 	{
-		__asm__("hlt");
+		__asm__ volatile ("hlt");
 	}
 }
