@@ -25,8 +25,8 @@ typedef struct _Pool
 
 static Pool* pool_4KIB;
 
-static void test_2MIB_alloc(void);
-static void test_4KIB_alloc(void);
+//static void test_2MIB_alloc(void);
+//static void test_4KIB_alloc(void);
 
 /* 
  */
@@ -99,6 +99,7 @@ void setup_physical_allocator()
 	//test_4KIB_alloc();
 }
 
+/*
 void test_2MIB_alloc()
 {
 	kprintf("Stack Size: %u  \n", stack_size(&stack_2MIB));
@@ -129,8 +130,9 @@ void test_4KIB_alloc()
 	}
 
 	kprintf("Passed 4KiB Test            \n");
-	__asm__("hlt");
+//	__asm__("hlt");
 }
+*/
 
 void* phys_alloc_2MIB()
 {
