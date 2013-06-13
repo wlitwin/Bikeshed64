@@ -39,8 +39,8 @@ data_seg_64:
 	.hword 0xFFFF
 	.hword 0
 	.byte 0
-	.byte 0b10000000
-	.byte 0b00001111
+	.byte 0b10010010
+	.byte 0b00000000
 	.byte 0
 	# Align to 16 bytes
 	.quad 0
@@ -340,6 +340,14 @@ longmode_code:
 	/* Setup kernel stack */
 	movq $KERNEL_STACK_LOCATION, %rsp
 	movq $KERNEL_STACK_LOCATION, %rbp
+
+	/* Set the segment registers */
+	movw $0x20, %ax
+	movw %ax, %ss
+	movw %ax, %ds
+	movw %ax, %es
+	movw %ax, %fs
+	movw %ax, %gs
 
 	/* Clear the BSS section */
 	movabsq $sbss, %rdi
