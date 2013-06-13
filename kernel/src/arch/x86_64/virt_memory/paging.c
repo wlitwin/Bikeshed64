@@ -38,7 +38,32 @@ void virt_memory_init()
 	phys_memory_init();
 }
 
-uint8_t virt_map_page(PML4_Table* table, const uint64_t virt_addr, 
+uint8_t virt_map_page(PML4_Table* table, const uint64_t virt_addr,
+						const uint64_t flags, const uint64_t page_size)
+{
+	uint64_t addr = 0;
+	if (page_size == PAGE_SMALL)
+	{
+		addr = (uint64_t) phys_alloc_2MIB();
+	}
+	else if (page_size == PAGE_LARGE)
+	{
+		addr = (uint64_t) phys_alloc_4KIB();
+	}
+	else
+	{
+		panic("virt_map_page: Invalid page size\n");
+	}
+
+	if (addr == 0)
+	{
+		return 0;
+	}
+
+	return virt_map_phys(table, virt_addr, addr, flags, page_size);
+}
+
+uint8_t virt_map_phys(PML4_Table* table, const uint64_t virt_addr, const uint64_t phys_addr,
 						const uint64_t flags, const uint64_t page_size)
 {
 	// Calculate the entries
@@ -47,7 +72,8 @@ uint8_t virt_map_page(PML4_Table* table, const uint64_t virt_addr,
 	const uint64_t pdt_index  = PDT_INDEX(virt_addr);
 	const uint64_t pt_index   = PT_INDEX(virt_addr);
 
-	const uint64_t safe_flags = flags & 0x6;
+	const uint64_t safe_flags = flags & 
+		(PG_FLAG_RW | PG_FLAG_USER | PG_FLAG_PWT | PG_FLAG_PCD | PG_FLAG_XD);
 
 	if ((table->entries[pml4_index] & PML4_PRESENT) == 0)	
 	{
@@ -86,7 +112,7 @@ uint8_t virt_map_page(PML4_Table* table, const uint64_t virt_addr,
 
 	if (page_size == PAGE_LARGE)
 	{
-		pd_table->entries[pdt_index] = (uint64_t)MASK_2MIB(virt_addr) | PDT_PAGE_SIZE | PDT_PRESENT;
+		pd_table->entries[pdt_index] = (uint64_t)MASK_2MIB(phys_addr) | PDT_PAGE_SIZE | PDT_PRESENT;
 		pd_table->entries[pdt_index] |= safe_flags;
 	}
 	else if (page_size == PAGE_SMALL)
@@ -105,7 +131,7 @@ uint8_t virt_map_page(PML4_Table* table, const uint64_t virt_addr,
 
 		P_Table* p_table = PDTE_TO_PT(pd_table->entries[pdt_index]);
 
-		p_table->entries[pt_index] = (uint64_t)MASK_4KIB(virt_addr) | PT_PRESENT;
+		p_table->entries[pt_index] = (uint64_t)MASK_4KIB(phys_addr) | PT_PRESENT;
 		p_table->entries[pt_index] |= safe_flags;
 	}
 	else
