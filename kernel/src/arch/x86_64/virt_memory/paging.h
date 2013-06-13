@@ -23,8 +23,11 @@
 #define MASK_2MIB(X) (((uint64_t)X) & 0xFFFFFFFFFFE00000)
 #define MASK_4KIB(X) (((uint64_t)X) & 0xFFFFFFFFFFFFF000)
 
-#define PAGE_RW 0x2
-#define PAGE_USER 0x4
+#define PG_FLAG_RW 0x2
+#define PG_FLAG_USER 0x4
+#define PG_FLAG_PWT 0x8
+#define PG_FLAG_PCD 0x10
+#define PG_FLAG_XD 0x8000000000000000
 
 #define PAGE_SMALL 0x1
 #define PAGE_LARGE 0x2
@@ -69,21 +72,36 @@ PML4_Table* KERNEL_PML4;
  */
 void virt_memory_init(void);
 
-/* Creates a mapping from the virtual address to a free physical address
+/* Creates a mapping from the virtual address to a physical address
  * so that the virtual address will be valid.
  *
  * Parameters:
  *    table - The PML4 table, the top most paging structure
  *    virt_addr - The virtual address to map to
+ *    phys_addr - The physical address to map the virtual address to
  *    flags - The permissions for this page
  *    page_size - Whether to map 4KiB or 2MiB to the virtual address
  *
  * Returns:
  *    1 if successfully mapped, 0 if an allocation failed
  */
-uint8_t virt_map_page(PML4_Table* table, const uint64_t virt_addr, 
+uint8_t virt_map_phys(PML4_Table* table, const uint64_t virt_addr, const uint64_t phys_addr,
 						const uint64_t flags, const uint64_t page_size);
 
+/* Similar to virt_map_phys, except it allocates a free physical piece of
+ * memory to use for the virtual mapping.
+ *
+ * Parameters:
+ *    table - The PML4 table, the top most paging structure
+ *    virt_addr - The virtual address to map
+ *    flags - The permissions for this page
+ *    page_size - Whether to map 4KiB or 2MiB to this virtual address
+ *
+ * Returns:
+ *    1 if successfully mapped, 0 if an allocation failed
+ */
+uint8_t virt_map_page(PML4_Table* table, const uint64_t virt_addr, 
+						const uint64_t flags, const uint64_t page_size);
 /* Unmap a virtual address
  *
  * Parameters:
