@@ -116,15 +116,6 @@ kernel_PDPTE:
 	.quad (kernel_PDT + 0b11)
 	.fill 511, 8, 0
 
-/* This macro craziness to so we can identiy map the first 1GiB
- * of address space. This will make it easier for the physical
- * memory manager to set itself up, as paging is already enabled,
- * yet it has to move stuff around in non-virtual memory. The reason
- * the macro had to be written out six times is because GAS has a
- * problem with macro recursion greater than a depth of 100. The
- * command to increase the depth was not immediately obvious so
- * this was done as a work around.
- */
 .align 4096
 .globl kernel_PDT
 kernel_PDT:
