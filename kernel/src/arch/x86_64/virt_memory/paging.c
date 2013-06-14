@@ -39,7 +39,8 @@ void virt_memory_init()
 
 	/* XXX - Temporarily here for debugging */
 	init_serial_debug();	
-//	init_text_mode();
+	init_text_mode();
+	clear_screen();
 
 	phys_memory_init();
 }
