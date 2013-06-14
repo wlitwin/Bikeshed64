@@ -20,6 +20,15 @@ void init_text_mode(void)
 	x = y = 0;
 }
 
+void clear_screen()
+{
+	unsigned char* video = (unsigned char*)0xB8000;
+	for (int i = 0; i < 80*25; ++i)
+	{
+		video[i] = 0;
+	}
+}
+
 void text_mode_char(char c)
 {
 	switch (c)

@@ -5,4 +5,6 @@ void init_text_mode(void);
 
 void text_mode_char(char c);
 
+void clear_screen();
+
 #endif
