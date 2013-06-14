@@ -1,7 +1,7 @@
 #include <stdarg.h>
 #include "inttypes.h"
 #include "panic.h"
-//#include "arch/x86_64/serial.h"
+#include "arch/x86_64/serial.h"
 #include "arch/x86_64/textmode.h"
 
 #define BUFFER_LEN 21
@@ -24,6 +24,7 @@ void kprintf(const char* format, ...)
 
 static void write_char(char c)
 {
+	serial_char(c);
 	text_mode_char(c);
 }
 
