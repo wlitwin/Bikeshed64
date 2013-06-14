@@ -94,6 +94,14 @@ void setup_physical_allocator()
 
 	kprintf("Wasted: %u bytes (%u KiB) of RAM\n", wasted_ram, wasted_ram/_1_KIB);
 	kprintf("Total allocatable RAM: %u MiB\n", allocatable_ram/_1_MIB);
+	
+	/*kprintf("Base: 0x%x \n", stack_2MIB.start);
+	for (uint64_t i = 0; i < 20; ++i)
+	{
+		kprintf("ADDRESS: 0x%x \n", phys_alloc_2MIB());
+	}
+	__asm__ volatile("hlt");
+	*/
 
 	//test_2MIB_alloc();
 	//test_4KIB_alloc();
@@ -136,12 +144,13 @@ void test_4KIB_alloc()
 
 void* phys_alloc_2MIB()
 {
-	return stack_pop(&stack_2MIB);
+	return (void*)((uint64_t)stack_pop(&stack_2MIB) - KERNEL_BASE);
 }
 
 void phys_free_2MIB(void* ptr)
 {
-	stack_push(&stack_2MIB, (void*)MASK_2MIB((uint64_t)ptr));
+	const uint64_t address = (uint64_t)ptr + KERNEL_BASE;
+	stack_push(&stack_2MIB, (void*)MASK_2MIB(address));
 }
 
 static void pool_init(Pool* pool)
@@ -204,7 +213,7 @@ void* phys_alloc_4KIB()
 {
 	if (pool_4KIB == NULL)
 	{
-		pool_4KIB = (Pool*) phys_alloc_2MIB();
+		pool_4KIB = (Pool*) PHYS_TO_VPHYS(phys_alloc_2MIB());
 		if (pool_4KIB == NULL)
 		{
 			return NULL;
@@ -214,7 +223,7 @@ void* phys_alloc_4KIB()
 		pool_4KIB->on_list = 1;
 	}
 
-	void* retVal = pool_alloc(pool_4KIB);	
+	uint64_t retVal = (uint64_t) pool_alloc(pool_4KIB);	
 	if (pool_empty(pool_4KIB))
 	{
 		Pool* p_next = pool_4KIB->next;
@@ -225,15 +234,16 @@ void* phys_alloc_4KIB()
 		pool_4KIB = p_next;
 	}
 
-	return retVal;
+	return (void*)(retVal - KERNEL_BASE);
 }
 
 void phys_free_4KIB(void* ptr)
 {
 	// Figure out which pool it belongs to	
-	Pool* pool = (Pool*) MASK_2MIB(ptr);
+	const uint64_t address = (uint64_t)ptr + KERNEL_BASE;
+	Pool* pool = (Pool*) MASK_2MIB(address);
 
-	pool_free(pool, ptr);
+	pool_free(pool, (void*)address);
 
 	if (pool_4KIB == NULL)
 	{
