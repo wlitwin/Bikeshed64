@@ -326,7 +326,6 @@ peat_done:
 
 /* Start of the 64-bit code */
 .code64
-.globl longmode_code
 longmode_code:
 	/* Setup kernel stack */
 	movq $KERNEL_STACK_LOCATION, %rsp

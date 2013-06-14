@@ -3,13 +3,11 @@
 #include "tss.h"
 #include "apic.h"
 #include "safety.h"
-#include "inttypes.h"
 
 #include "kernel/klib.h"
 
 #include "arch/x86_64/panic.h"
 #include "arch/x86_64/kprintf.h"
-#include "arch/x86_64/support.h"
 
 #define IDT_SEG_PRESENT (0x1 << 15)
 
@@ -64,6 +62,8 @@ static void set_idt_entry(uint64_t index, interrupt_handler fn_ih)
 static void default_handler(uint64_t vector, uint64_t code)
 {
 	kprintf("Interrupt! vector: %u - Code: %u \n", vector, code);
+
+	pic_acknowledge(vector);
 }
 
 void interrupt_install_isr(uint64_t index, void handler(uint64_t, uint64_t))
@@ -73,16 +73,6 @@ void interrupt_install_isr(uint64_t index, void handler(uint64_t, uint64_t))
 
 static void pic_init()
 {
-	#define PIC_MASTER_CMD_PORT 0x20
-	#define PIC_MASTER_IMR_PORT 0x21
-	#define PIC_SLAVE_CMD_PORT 0xA0
-	#define PIC_SLAVE_IMR_PORT 0xA1
-	#define PIC_MASTER_SLAVE_LINE 0x04
-	#define PIC_SLAVE_ID 0x02
-	#define PIC_86MODE 0x1
-	#define PIC_ICW1BASE 0x10
-	#define PIC_NEEDICW4 0x01
-
 	// ICW1
 	_outb(PIC_MASTER_CMD_PORT, PIC_ICW1BASE | PIC_NEEDICW4);		
 	_outb(PIC_SLAVE_CMD_PORT, PIC_ICW1BASE | PIC_NEEDICW4);
@@ -120,7 +110,7 @@ void interrupts_init()
 
 	// Initialize the APIC so interrupts from it don't
 	// come to the exception interrupt vectors. Currently
-	// just disabled the APIC.
+	// just disables the APIC.
 	apic_init();
 
 	// For now we'll use the old PIC
