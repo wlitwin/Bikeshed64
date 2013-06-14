@@ -13,6 +13,8 @@ extern uint64_t __KERNEL_END;
 
 #define KERNEL_BASE 0xFFFF800000000000
 
+#define PHYS_TO_VPHYS(X) ((void*)((uint64_t)(X) + KERNEL_BASE))
+
 //=============================================================================
 // Memory Map BIOS definitions
 //=============================================================================
