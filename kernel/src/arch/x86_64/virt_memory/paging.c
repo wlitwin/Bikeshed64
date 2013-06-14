@@ -15,9 +15,9 @@
 #define PDT_INDEX(X)  (((X) >> 21) & 0x1FF)
 #define PT_INDEX(X)   (((X) >> 12) & 0x1FF)
 
-#define PML4E_TO_PDPT(X) ((PDP_Table*)(((X) >> 12) & 0x7FFFFFF))
-#define PDPTE_TO_PDT(X)  ((PD_Table*)(((X) >> 12) & 0x7FFFFFF))
-#define PDTE_TO_PT(X)    ((P_Table*)(((X) >> 12) & 0x7FFFFFF))
+#define PML4E_TO_PDPT(X) ((PDP_Table*)((X) & 0x7FFFFFF000))
+#define PDPTE_TO_PDT(X)  ((PD_Table*) ((X) & 0x7FFFFFF000))
+#define PDTE_TO_PT(X)    ((P_Table*)  ((X) & 0x7FFFFFF000))
 
 #define COW_BITS 0x100 // Bit 9
 
@@ -26,6 +26,12 @@
  * Defined in prekernel.s
  */
 extern uint8_t processor_virt_bits;
+
+static inline
+void write_cr3(void* page_table)
+{
+	__asm__ volatile("mov %%rax, %%cr3" : : "a"((uint64_t)page_table));
+}
 
 void virt_memory_init()
 {
@@ -39,7 +45,7 @@ void virt_memory_init()
 }
 
 uint8_t virt_map_page(PML4_Table* table, const uint64_t virt_addr,
-						const uint64_t flags, const uint64_t page_size)
+		const uint64_t flags, const uint64_t page_size)
 {
 	uint64_t addr = 0;
 	if (page_size == PAGE_SMALL)
@@ -64,7 +70,7 @@ uint8_t virt_map_page(PML4_Table* table, const uint64_t virt_addr,
 }
 
 uint8_t virt_map_phys(PML4_Table* table, const uint64_t virt_addr, const uint64_t phys_addr,
-						const uint64_t flags, const uint64_t page_size)
+		const uint64_t flags, const uint64_t page_size)
 {
 	// Calculate the entries
 	const uint64_t pml4_index = PML4_INDEX(virt_addr);
@@ -84,9 +90,10 @@ uint8_t virt_map_phys(PML4_Table* table, const uint64_t virt_addr, const uint64_
 			return 0;
 		}
 
-		memset(pdp_table, 0, sizeof(PDP_Table));
+		memset(PHYS_TO_VPHYS(pdp_table), 0, sizeof(PDP_Table));
 
 		table->entries[pml4_index] = (uint64_t) pdp_table | PML4_WRITABLE | PML4_PRESENT;
+		invlpg(pdp_table);
 	}
 
 	PDP_Table* pdp_table = PML4E_TO_PDPT(table->entries[pml4_index]);
@@ -98,9 +105,10 @@ uint8_t virt_map_phys(PML4_Table* table, const uint64_t virt_addr, const uint64_
 			return 0;
 		}
 
-		memset(pd_table, 0, sizeof(PD_Table));
+		memset(PHYS_TO_VPHYS(pd_table), 0, sizeof(PD_Table));
 
 		pdp_table->entries[pdpt_index] = (uint64_t) pd_table | PDPT_WRITABLE | PDPT_PRESENT;
+		invlpg(pd_table);
 	}
 
 	PD_Table* pd_table = PDPTE_TO_PDT(pdp_table->entries[pdpt_index]);
@@ -126,7 +134,10 @@ uint8_t virt_map_phys(PML4_Table* table, const uint64_t virt_addr, const uint64_
 				return 0;
 			}
 
-			memset(p_table, 0, sizeof(P_Table));	
+			memset(PHYS_TO_VPHYS(p_table), 0, sizeof(P_Table));	
+
+			pd_table->entries[pdt_index] = (uint64_t)p_table | PDT_WRITABLE | PDT_PRESENT;
+			invlpg(p_table);
 		}
 
 		P_Table* p_table = PDTE_TO_PT(pd_table->entries[pdt_index]);
@@ -138,6 +149,8 @@ uint8_t virt_map_phys(PML4_Table* table, const uint64_t virt_addr, const uint64_
 	{
 		panic("virt_map_page: Invalid page size specified");
 	}
+
+	invlpg(virt_addr);
 
 	return 1;
 }

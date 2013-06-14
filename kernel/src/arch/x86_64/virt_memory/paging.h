@@ -45,7 +45,7 @@
 #define PML4_PRESENT 0x1
 #define PML4_WRITABLE 0x2
 
-#define invlpg(X) __asm__ volatile("invlpg %0" ::"m" (X))
+#define invlpg(X) __asm__ volatile("invlpg %0" :: "m" (X))
 
 /* This is defined in prekernel.s
  */
