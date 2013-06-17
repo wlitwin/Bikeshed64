@@ -57,7 +57,7 @@ void apic_init()
 		// an uncacheable region otherwise problems will
 		// happen.
 
-		if (!virt_map_phys(KERNEL_PML4, APIC_VIRT_LOC, apic_location,
+/*		if (!virt_map_phys(KERNEL_PML4, APIC_VIRT_LOC, apic_location,
 						PG_FLAG_RW | PG_FLAG_PWT | PG_FLAG_PCD, PAGE_SMALL))
 		{
 			panic("Failed APIC virtual mapping \n");
@@ -73,6 +73,7 @@ void apic_init()
 		// Setup the APIC LVTs
 		kprintf("TIMER VEC: 0x%x \n", apic_regs[APIC_TIMER_REG]);
 
+		*/
 	}
 	
 }
