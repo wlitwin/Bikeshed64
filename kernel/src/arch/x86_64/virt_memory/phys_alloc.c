@@ -1,10 +1,11 @@
 #include "phys_alloc.h"
 
-#include "stack.h"
 #include "paging.h"
 #include "physical.h"
 
 #include "inttypes.h"
+
+#include "kernel/data_structures/stack.h"
 
 #include "arch/x86_64/panic.h"
 #include "arch/x86_64/kprintf.h"
@@ -94,14 +95,6 @@ void setup_physical_allocator()
 
 	kprintf("Wasted: %u bytes (%u KiB) of RAM\n", wasted_ram, wasted_ram/_1_KIB);
 	kprintf("Total allocatable RAM: %u MiB\n", allocatable_ram/_1_MIB);
-	
-	/*kprintf("Base: 0x%x \n", stack_2MIB.start);
-	for (uint64_t i = 0; i < 20; ++i)
-	{
-		kprintf("ADDRESS: 0x%x \n", phys_alloc_2MIB());
-	}
-	__asm__ volatile("hlt");
-	*/
 
 	//test_2MIB_alloc();
 	//test_4KIB_alloc();
@@ -113,6 +106,7 @@ void test_2MIB_alloc()
 	kprintf("Stack Size: %u  \n", stack_size(&stack_2MIB));
 
 	void* ptr = phys_alloc_2MIB();
+	kprintf("Address: 0x%x - Left: %u   \n", ptr, stack_size(&stack_2MIB));
 	while (ptr != NULL)
 	{
 		uint64_t* p = (uint64_t*)ptr;
@@ -121,10 +115,14 @@ void test_2MIB_alloc()
 		ptr = phys_alloc_2MIB();
 	}
 
+	kprintf("Next: 0x%x \n", ptr);
+
 	kprintf("Passed 2MiB Test            \n");
 	__asm__("hlt");
 }
+*/
 
+/*
 void test_4KIB_alloc()
 {
 	void* ptr = phys_alloc_4KIB();
@@ -144,7 +142,17 @@ void test_4KIB_alloc()
 
 void* phys_alloc_2MIB()
 {
-	return (void*)((uint64_t)stack_pop(&stack_2MIB) - KERNEL_BASE);
+	void* retVal = stack_pop(&stack_2MIB);
+	if (retVal == 0)
+	{
+		return NULL;
+	}
+
+	void* final_value = (void*)((uint64_t)retVal - KERNEL_BASE);
+
+	//kprintf("2MIB: 0x%x \n", final_value);
+
+	return final_value;
 }
 
 void phys_free_2MIB(void* ptr)
@@ -213,11 +221,13 @@ void* phys_alloc_4KIB()
 {
 	if (pool_4KIB == NULL)
 	{
-		pool_4KIB = (Pool*) PHYS_TO_VPHYS(phys_alloc_2MIB());
+		pool_4KIB = (Pool*) phys_alloc_2MIB();
 		if (pool_4KIB == NULL)
 		{
 			return NULL;
 		}
+
+		pool_4KIB = (Pool*) PHYS_TO_VPHYS(pool_4KIB);
 
 		pool_init(pool_4KIB);
 		pool_4KIB->on_list = 1;
@@ -234,7 +244,9 @@ void* phys_alloc_4KIB()
 		pool_4KIB = p_next;
 	}
 
-	return (void*)(retVal - KERNEL_BASE);
+	void* final_value = (void*)(retVal - KERNEL_BASE);
+	//kprintf("4KIB: 0x%x \n", final_value);
+	return final_value;
 }
 
 void phys_free_4KIB(void* ptr)
