@@ -1,6 +1,7 @@
 #ifndef __VIRT_MEMORY_PAGING_H__
 #define __VIRT_MEMORY_PAGING_H__
 
+#include "kernel/virt_memory/defs.h"
 #include "arch/x86_64/virt_memory/types.h"
 
 #define _1_KIB 1024ULL
@@ -23,15 +24,6 @@
 #define MASK_2MIB(X) (((uint64_t)X) & 0xFFFFFFFFFFE00000)
 #define MASK_4KIB(X) (((uint64_t)X) & 0xFFFFFFFFFFFFF000)
 
-#define PG_FLAG_RW 0x2
-#define PG_FLAG_USER 0x4
-#define PG_FLAG_PWT 0x8
-#define PG_FLAG_PCD 0x10
-#define PG_FLAG_XD 0x8000000000000000
-
-#define PAGE_SMALL 0x1
-#define PAGE_LARGE 0x2
-
 #define PT_PRESENT 0x1
 #define PT_WRITABLE 0x2
 
@@ -49,7 +41,7 @@
 
 /* This is defined in prekernel.s
  */
-extern PML4_Table kernel_PML4;
+extern uint64_t kernel_PML4;
 
 /* This is defined in prekernel.s
  */
@@ -85,7 +77,7 @@ void virt_memory_init(void);
  * Returns:
  *    1 if successfully mapped, 0 if an allocation failed
  */
-uint8_t virt_map_phys(PML4_Table* table, const uint64_t virt_addr, const uint64_t phys_addr,
+uint8_t virt_map_phys(void* table, const uint64_t virt_addr, const uint64_t phys_addr,
 						const uint64_t flags, const uint64_t page_size);
 
 /* Similar to virt_map_phys, except it allocates a free physical piece of
@@ -100,7 +92,7 @@ uint8_t virt_map_phys(PML4_Table* table, const uint64_t virt_addr, const uint64_
  * Returns:
  *    1 if successfully mapped, 0 if an allocation failed
  */
-uint8_t virt_map_page(PML4_Table* table, const uint64_t virt_addr, 
+uint8_t virt_map_page(void* table, const uint64_t virt_addr, 
 						const uint64_t flags, const uint64_t page_size);
 /* Unmap a virtual address
  *
@@ -108,14 +100,14 @@ uint8_t virt_map_page(PML4_Table* table, const uint64_t virt_addr,
  *    table - The PML4 table, the top most paging structure
  *    virt_addr - The virtual address to unmap
  */
-void virt_unmap_page(PML4_Table* table, uint64_t virt_addr);
+void virt_unmap_page(void* table, uint64_t virt_addr);
 
 /* Completely deletes all paging structures in the given hierarchy.
  *
  * Parameters:
  *    table - The PML4 table, the top most paging structure
  */
-void virt_cleanup_table(PML4_Table* table);
+void virt_cleanup_table(void* table);
 
 /* Clones a PML4 mapping. This does a copy-on-write clone. So
  * only the entry values are copied, but not the pages that are
@@ -129,6 +121,6 @@ void virt_cleanup_table(PML4_Table* table);
  *    A new PML4 table that has the same mappings as the given one,
  *    or NULL if space for a new PML4 table could not be allocated.
  */
-PML4_Table* virt_clone_mapping(const PML4_Table* other);
+void* virt_clone_mapping(const void* other);
 
 #endif

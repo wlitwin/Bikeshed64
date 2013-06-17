@@ -35,7 +35,7 @@ void write_cr3(void* page_table)
 
 void virt_memory_init()
 {
-	KERNEL_PML4 = &kernel_PML4;	
+	KERNEL_PML4 = (PML4_Table*) &kernel_PML4;	
 
 	/* XXX - Temporarily here for debugging */
 	init_serial_debug();	
@@ -45,15 +45,16 @@ void virt_memory_init()
 	phys_memory_init();
 }
 
-uint8_t virt_map_page(PML4_Table* table, const uint64_t virt_addr,
+uint8_t virt_map_page(void* _table, const uint64_t virt_addr,
 		const uint64_t flags, const uint64_t page_size)
 {
+	PML4_Table* table = (PML4_Table*) _table;
 	uint64_t addr = 0;
-	if (page_size == PAGE_SMALL)
+	if (page_size == PAGE_LARGE)
 	{
 		addr = (uint64_t) phys_alloc_2MIB();
 	}
-	else if (page_size == PAGE_LARGE)
+	else if (page_size == PAGE_SMALL)
 	{
 		addr = (uint64_t) phys_alloc_4KIB();
 	}
@@ -70,9 +71,10 @@ uint8_t virt_map_page(PML4_Table* table, const uint64_t virt_addr,
 	return virt_map_phys(table, virt_addr, addr, flags, page_size);
 }
 
-uint8_t virt_map_phys(PML4_Table* table, const uint64_t virt_addr, const uint64_t phys_addr,
+uint8_t virt_map_phys(void* _table, const uint64_t virt_addr, const uint64_t phys_addr,
 		const uint64_t flags, const uint64_t page_size)
 {
+	PML4_Table* table = (PML4_Table*) _table;
 	// Calculate the entries
 	const uint64_t pml4_index = PML4_INDEX(virt_addr);
 	const uint64_t pdpt_index = PDPT_INDEX(virt_addr);
@@ -156,8 +158,9 @@ uint8_t virt_map_phys(PML4_Table* table, const uint64_t virt_addr, const uint64_
 	return 1;
 }
 
-void virt_unmap_page(PML4_Table* table, uint64_t virt_addr)
+void virt_unmap_page(void* _table, uint64_t virt_addr)
 {
+	PML4_Table* table = (PML4_Table*) _table;
 	// TODO what if a cloned PML4 table has been created, and then
 	// this method called?
 
@@ -266,8 +269,9 @@ static void cleanup_page_directory_pointer_table(PDP_Table* pdp_table)
 	phys_free_4KIB(pdp_table);
 }
 
-void virt_cleanup_table(PML4_Table* table)
+void virt_cleanup_table(void* _table)
 {
+	PML4_Table* table = (PML4_Table*) _table;
 	for (uint64_t pml4_index = 0; pml4_index < 512; ++pml4_index)
 	{
 		const uint64_t entry = table->entries[pml4_index];
@@ -281,8 +285,9 @@ void virt_cleanup_table(PML4_Table* table)
 	phys_free_4KIB(table);
 }
 
-PML4_Table* virt_clone_mapping(const PML4_Table* other)
+void* virt_clone_mapping(const void* _other)
 {
+	PML4_Table* other = (PML4_Table*) _other;
 	PML4_Table* new_table = (PML4_Table*) phys_alloc_4KIB();		
 	if (new_table == NULL)
 	{
