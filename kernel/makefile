@@ -31,7 +31,7 @@ OBJ_DIR=obj
 # Filled in by debug rule
 DBG=
 
-KERNEL_OBJECTS=$(shell find src/ -name '*.[cs]' | sed -e 's/^\(.*\.di\|.*\.[cs]\)$$/obj\/\1.o/g')
+KERNEL_OBJECTS=$(shell find src/ -name '*.[cs]' | sed -e 's/^\(.*\.[cs]\)$$/obj\/\1.o/g')
 PRE_KERNEL = $(OBJ_DIR)/src/arch/x86_64/prekernel.s.o
 
 all: kernel 
@@ -74,8 +74,8 @@ kernel: print_args $(KERNEL_OBJECTS)
 	@echo ----------------------------
 	@echo Creating Kernel Binary Image
 	@echo ----------------------------
-	$(LD) $(LD_FLAGS) -T ./kernel.ld $(PRE_KERNEL) $(filter-out $(PRE_KERNEL),$(KERNEL_OBJECTS)) -o $(OUTPUT_DIR)/kernel.b
+	@$(LD) $(LD_FLAGS) -T ./kernel.ld $(PRE_KERNEL) $(filter-out $(PRE_KERNEL),$(KERNEL_OBJECTS)) -o $(OUTPUT_DIR)/kernel.b
 	@echo ---------------------------
 	@echo Creating Kernel Debug Image
 	@echo ---------------------------
-	$(LD) $(LD_FLAGS_DBG) -T ./kernel.ld $(PRE_KERNEL) $(filter-out $(PRE_KERNEL),$(KERNEL_OBJECTS)) -o $(OUTPUT_DIR)/kernel.o
+	@$(LD) $(LD_FLAGS_DBG) -T ./kernel.ld $(PRE_KERNEL) $(filter-out $(PRE_KERNEL),$(KERNEL_OBJECTS)) -o $(OUTPUT_DIR)/kernel.o
