@@ -29,5 +29,6 @@ COMPILE_ASSERT(sizeof(int16_t) == 2);
 typedef char int8_t;
 COMPILE_ASSERT(sizeof(int8_t) == 1);
 
+COMPILE_ASSERT(sizeof(void*) == 8);
 
 #endif
