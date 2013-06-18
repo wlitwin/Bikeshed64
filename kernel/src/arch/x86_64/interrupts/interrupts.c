@@ -63,10 +63,15 @@ static void default_handler(uint64_t vector, uint64_t code)
 {
 	kprintf("Interrupt! vector: %u - Code: %u \n", vector, code);
 
+	if (vector == 14)
+	{
+		panic("Page Fault");
+	}
+
 	pic_acknowledge(vector);
 }
 
-void interrupt_install_isr(uint64_t index, void handler(uint64_t, uint64_t))
+void interrupts_install_isr(uint64_t index, void handler(uint64_t, uint64_t))
 {
 	isr_table[index] = handler;
 }
@@ -105,7 +110,7 @@ void interrupts_init()
 	for (uint64_t i = 0; i < 256; ++i)
 	{
 		set_idt_entry(i, isr_stub_table[i]);
-		interrupt_install_isr(i, &default_handler);
+		interrupts_install_isr(i, &default_handler);
 	}
 
 	// Initialize the APIC so interrupts from it don't

@@ -3,8 +3,6 @@
 #include "kernel/scheduler/scheduler.h"
 #include "kernel/alloc/alloc.h"
 
-#include "safety.h"
-
 void kmain(void)
 {
 	/* Initialize the memory sub-system */
