@@ -48,13 +48,6 @@ SECTIONS {
 		*(.data.*)
 	}
 
-	.rodata ALIGN(0x1000) : AT(ADDR(.rodata ) - virt) {
-		*(.rodata)
-		*(.rodata.*)
-		*(.rel.rodata)
-		*(.rel.rodata.*)
-	}
-
 	.bss ALIGN(0x1000) : AT(ADDR(.bss) - virt) {
 		sbss = .;
 		bss = .; _bss = .; __bss = .;
@@ -63,8 +56,15 @@ SECTIONS {
 		*(.bss.*)
 		ebss = .;
 	}
+
+	.rodata ALIGN(0x1000) : AT(ADDR(.rodata ) - virt) {
+		*(.rodata)
+		*(.rodata.*)
+		*(.rel.rodata)
+		*(.rel.rodata.*)
+	}
+
 	end = .; _end = .; __end = .;
-	. = ALIGN(0x8);
 	__KERNEL_END = . - virt;
 
 	/DISCARD/ :
