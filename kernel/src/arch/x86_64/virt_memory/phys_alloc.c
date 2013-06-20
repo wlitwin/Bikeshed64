@@ -147,7 +147,9 @@ void* phys_alloc_2MIB()
 
 	void* final_value = VIRT_TO_PHYS(retVal);
 
+#ifdef DEBUG_PHYS_ALLOC
 	kprintf("2MIB: 0x%x \n", final_value);
+#endif
 
 	return final_value;
 }
@@ -167,12 +169,14 @@ static void pool_init(Pool* pool)
 	pool->prev = NULL;
 	pool->on_list = 0;
 
+#ifdef DEBUG_PHYS_ALLOC
 	kprintf("POOL INIT\n");
 	kprintf("implicit_next: 0x%x\n", pool->implicit_next);
 	kprintf("max_address:   0x%x\n", pool->max_address);
 	kprintf("next:          0x%x\n", pool->next);
 	kprintf("prev:          0x%x\n", pool->prev);
 	kprintf("on_list:       0x%x\n", pool->on_list);
+#endif
 }
 
 static uint8_t pool_empty(Pool* pool)
@@ -250,7 +254,9 @@ void* phys_alloc_4KIB()
 	}
 
 	void* final_value = VIRT_TO_PHYS(retVal);
+#ifdef DEBUG_PHYS_ALLOC
 	kprintf("4KIB: 0x%x \n", final_value);
+#endif
 	return final_value;
 }
 
