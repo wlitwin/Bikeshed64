@@ -18,7 +18,7 @@ CFLAGS=-m64 \
 	   -DBIKESHED_X86_64
 
 LD=ld
-LD_FLAGS=-m elf_x86_64 -Tlinker.ld
+LD_FLAGS=-m elf_x86_64 -Tlinker.ld -z max-page-size=4096
 
 AS=as
 AS_FLAGS=--64 -am
@@ -46,5 +46,6 @@ bin/% : $(OBJ_DIR)/src/startup.c.o obj/src/%/*.o
 	$(LD) $(LD_FLAGS) obj/src/startup.c.o $(shell find obj/src/$(shell basename $@) -name "*.o") -o $@
 
 clean:
+	@echo Cleaning Programs
 	/bin/rm -rf $(OBJ_DIR)/*
 	/bin/rm -rf $(OUTPUT_DIR)/*
