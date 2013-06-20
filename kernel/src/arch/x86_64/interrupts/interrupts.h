@@ -17,6 +17,10 @@ void interrupts_init(void);
 #define PIC_NEEDICW4 0x01
 #define PIC_EOI 0x20
 
+#define VEC_TIMER 0x20
+
+void interrupts_install_isr(uint64_t index, void handler(uint64_t, uint64_t));
+
 static inline __attribute__((always_inline))
 void pic_acknowledge(const uint64_t vector)
 {

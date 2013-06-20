@@ -1,6 +1,7 @@
 #include "tss.h"
 
 #include "kernel/klib.h" // memset
+#include "arch/x86_64/virt_memory/physical.h"
 
 typedef struct
 {
@@ -40,20 +41,23 @@ static TSS kernel_TSS;
 #define TSS_DESC_TYPE_AVAIL 0x9
 
 extern TSS_Descriptor tss_seg_64;
+TSS_Descriptor* tss;
 
 void setup_tss_descriptor()
 {
 	const uint64_t tss_base = (uint64_t)&kernel_TSS;
 	const uint64_t tss_limit = sizeof(TSS);
 
-	tss_seg_64.limit = tss_limit & 0xFF;
-	tss_seg_64.base1 = tss_base & 0xFFFF;
-	tss_seg_64.base2 = (tss_base & 0xFF0000) >> 16;
-	tss_seg_64.flags = TSS_DESC_P | TSS_DESC_DPL0 | TSS_DESC_TYPE_AVAIL;
-	tss_seg_64.limit2 = (tss_limit & 0xF0000) >> 16;
-	tss_seg_64.base3 = (tss_base & 0xFF000000) >> 24;
-	tss_seg_64.base4 = (tss_base & 0xFFFFFFFF00000000) >> 32;
-	tss_seg_64.reserved = 0;
+	tss = PHYS_TO_VIRT(&tss_seg_64);
+
+	tss->limit = tss_limit & 0xFF;
+	tss->base1 = tss_base & 0xFFFF;
+	tss->base2 = (tss_base & 0xFF0000) >> 16;
+	tss->flags = TSS_DESC_P | TSS_DESC_DPL0 | TSS_DESC_TYPE_AVAIL;
+	tss->limit2 = (tss_limit & 0xF0000) >> 16;
+	tss->base3 = (tss_base & 0xFF000000) >> 24;
+	tss->base4 = (tss_base & 0xFFFFFFFF00000000) >> 32;
+	tss->reserved = 0;
 
 	memset(&kernel_TSS, 0, sizeof(kernel_TSS));
 	kernel_TSS.io_map_base = 104;

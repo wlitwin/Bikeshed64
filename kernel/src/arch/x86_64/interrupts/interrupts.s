@@ -30,6 +30,7 @@
 	jmp isr_save
 .endm
 
+.globl interrupt_stack_ptr
 isr_save:
 	/* Save the registers */
 	pushq	%r15
@@ -55,6 +56,9 @@ isr_save:
 	movw	%ds, %cx
 	movq	%rcx, 134(%rsp)
 	*/
+
+	movq	%rsp, %rax
+	movabs	%rax, interrupt_stack_ptr
 
 	/* Grab the error code off the stack */
 	movq	120(%rsp), %rax

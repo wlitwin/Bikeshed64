@@ -8,6 +8,7 @@
 
 #include "arch/x86_64/panic.h"
 #include "arch/x86_64/kprintf.h"
+#include "arch/x86_64/virt_memory/physical.h"
 
 #define IDT_SEG_PRESENT (0x1 << 15)
 
@@ -34,8 +35,8 @@ COMPILE_ASSERT(sizeof(IDT_Gate) == 16);
 #define GDT_CODE_SEG 0x10
 #define GDT_DATA_SEG 0x20
 
-#define idt start_idt_64
 extern IDT_Gate start_idt_64[256];
+IDT_Gate* idt;
 
 typedef void (*interrupt_handler)(void);
 
@@ -59,12 +60,18 @@ static void set_idt_entry(uint64_t index, interrupt_handler fn_ih)
 	idt[index].reserved = 0;
 }
 
+uint64_t interrupt_stack_ptr = 0;
 static void default_handler(uint64_t vector, uint64_t code)
 {
 	kprintf("Interrupt! vector: %u - Code: %u \n", vector, code);
 
 	if (vector == 14)
 	{
+		uint64_t rip = 0;
+		__asm__ volatile("movq %0, %%rax" :: "m"(interrupt_stack_ptr));
+		__asm__ volatile("movq 136(%rax), %rax");
+		__asm__ volatile("movq %%rax, %0" : "=m"(rip));
+		kprintf("EIP: 0x%x\n", rip);
 		panic("Page Fault");
 	}
 
@@ -103,6 +110,8 @@ static void pic_init()
 
 void interrupts_init()
 {
+	idt = PHYS_TO_VIRT(&start_idt_64[0]);
+
 	setup_tss_descriptor();
 
 	extern interrupt_handler isr_stub_table[256];
