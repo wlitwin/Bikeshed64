@@ -23,6 +23,14 @@ BlockAllocator* block_init(const void* address,
 	ba->implicit_next = ba->base;
 	stack_init(&ba->free_stack);
 
+#ifdef DEBUG_BLOCK_ALLOCATOR
+	kprintf("BA: 0x%x\n", address);
+	kprintf("MB: %u\n", max_blocks);
+	kprintf("block_size: %u\n", block_size);
+	kprintf("max_addr: 0x%x\n", ba->max_address);
+	kprintf("implicit: 0x%x\n", ba->implicit_next);
+#endif
+
 	return ba;
 }
 
