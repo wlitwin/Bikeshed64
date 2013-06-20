@@ -56,6 +56,9 @@ gdt_64_len = end_gdt_64 - start_gdt_64
 gdt_64:
 	.word gdt_64_len
 	.quad start_gdt_64
+gdt_64_upper:
+	.word gdt_64_len
+	.quad start_gdt_64 + KERNEL_BASE_LOCATION
 
 /********************************************************
  * End GDT Information
@@ -68,6 +71,9 @@ gdt_64:
 idt_64:
 	.word idt_64_len
 	.quad start_idt_64
+idt_64_upper:
+	.word idt_64_len
+	.quad start_idt_64 + KERNEL_BASE_LOCATION
 	
 .align 4096
 .globl start_idt_64
@@ -330,6 +336,9 @@ longmode_code:
 	/* Setup kernel stack */
 	movq $KERNEL_STACK_LOCATION, %rsp
 	movq $KERNEL_STACK_LOCATION, %rbp
+
+	lgdt (gdt_64_upper)
+	lidt (idt_64_upper)
 
 	/* Set the segment registers */
 	movw $0x20, %ax
