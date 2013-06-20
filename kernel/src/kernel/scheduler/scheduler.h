@@ -7,6 +7,8 @@ void scheduler_init(void);
 
 void schedule(PCB* pcb);
 
+void create_init_process(void);
+
 void dispatch(void);
 
 #endif
