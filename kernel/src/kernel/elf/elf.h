@@ -3,6 +3,7 @@
 
 #include "safety.h"
 #include "inttypes.h"
+#include "kernel/scheduler/pcb.h"
 
 #ifdef BIKESHED_X86_64
 #include "arch/x86_64/elf/imports.h"
@@ -37,6 +38,9 @@ typedef uint8_t ELF_Error;
 #define ELF_ERROR_BAD_ENDIAN 3
 #define ELF_ERROR_BAD_ABI 4
 #define ELF_ERROR_BAD_TYPE 5
+#define ELF_ERROR_BAD_MACHINE 6
+#define ELF_ERROR_BAD_VERSION 7
+#define ELF_ERROR_BAD_VADDR 8
 
 #define ELF_DATA2_LSB 1
 #define ELF_DATA2_MSB 2
@@ -54,6 +58,8 @@ typedef uint8_t ELF_Error;
 #define ET_DYN 3
 #define ET_CORE 4
 
+#define EV_CURRENT 1
+
 #define ELF_CLASS_OFF 4
 #define ELF_DATA_OFF 5
 #define ELF_VERSION_OFF 6
@@ -61,6 +67,8 @@ typedef uint8_t ELF_Error;
 #define ELF_ABIVERSION_OFF 8
 #define ELF_PAD_OFF 9
 #define ELF_NIDENT_SIZE 16
+
+#define PT_LOAD 1
 
 typedef struct
 {
@@ -141,6 +149,6 @@ typedef struct
  * Returns:
  *    1 if successfully created process, 0 otherwise.
  */
-ELF_Error elf_create_process(void* elf_file, void* page_table);
+ELF_Error elf_create_process(PCB* pcb, void* elf_file, void* page_table);
 
 #endif

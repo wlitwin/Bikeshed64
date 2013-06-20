@@ -3,5 +3,7 @@
 
 #define ELF_DATA2 ELF_DATA2_LSB
 #define ELF_ABI ELF_OSABI_SYSV
+#define EM_X86_64 62
+#define ELF_CUR_MACHINE EM_X86_64
 
 #endif
