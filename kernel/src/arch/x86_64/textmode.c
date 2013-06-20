@@ -1,13 +1,15 @@
 #include "textmode.h"
 #include "inttypes.h"
 
+#include "arch/x86_64/virt_memory/physical.h"
+
 typedef struct
 {
 	char c;
 	uint8_t color;
 } video_cell;
 
-#define VIDEO_ADDRESS 0xB8000
+#define VIDEO_ADDRESS (0xB8000+KERNEL_BASE)
 #define MAX_X 80
 #define MAX_Y 25
 
@@ -22,7 +24,7 @@ void init_text_mode(void)
 
 void clear_screen()
 {
-	unsigned char* video = (unsigned char*)0xB8000;
+	unsigned char* video = (unsigned char*)VIDEO_ADDRESS;
 	for (int i = 0; i < 80*25; ++i)
 	{
 		video[i] = 0;
