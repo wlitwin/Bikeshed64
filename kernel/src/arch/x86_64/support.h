@@ -3,7 +3,7 @@
 
 #include "inttypes.h"
 
-static inline /*__attribute__((always_inline))*/
+static inline __attribute__((always_inline))
 uint8_t _inb(uint16_t port)
 {
 	uint8_t retVal;
@@ -27,7 +27,7 @@ uint32_t _inl(uint16_t port)
 	return retVal;
 }
 
-static inline /*__attribute__((always_inline))*/
+static inline __attribute__((always_inline))
 void _outb(uint16_t port, uint8_t val)
 {
 	__asm__ volatile("outb %0, %1" : : "a"(val), "d"(port));
