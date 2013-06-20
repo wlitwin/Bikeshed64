@@ -6,5 +6,5 @@ WaterMarkAllocator kernel_WaterMark;
 
 void alloc_init()
 {
-	water_mark_init(&kernel_WaterMark, (void*)0xFFFFFFFFFFFFFFFF);
+	water_mark_init(&kernel_WaterMark, (void*)0xFFFFFFFFFFE00000);
 }
