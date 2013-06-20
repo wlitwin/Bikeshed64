@@ -1,6 +1,7 @@
 #ifndef __VIRT_MEMORY_PHYSICAL_H__
 #define __VIRT_MEMORY_PHYSICAL_H__
 
+#include "imports.h"
 #include "inttypes.h"
 
 /* This variable is located at the very end of the kernel
@@ -11,8 +12,6 @@ extern uint64_t __KERNEL_END;
 #define KERNEL_START 0x100000
 // TODO - Do something better
 #define KERNEL_END (0x400000) //(uint64_t)&__KERNEL_END)
-
-#define KERNEL_BASE 0xFFFF800000000000
 
 #define PHYS_TO_VIRT(X) ((void*)((uint64_t)(X) + KERNEL_BASE))
 

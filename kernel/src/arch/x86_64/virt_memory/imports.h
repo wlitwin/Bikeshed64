@@ -13,6 +13,8 @@
 #define PAGE_SMALL_SIZE 0x1000
 #define PAGE_LARGE_SIZE 0x200000
 
+#define KERNEL_BASE 0xFFFF800000000000
+
 /* Pointer to the current kernel paging structure
  */
 void* kernel_table;
