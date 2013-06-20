@@ -30,7 +30,7 @@
 	jmp isr_save
 .endm
 
-.globl interrupt_stack_ptr
+.globl current_pcb
 isr_save:
 	/* Save the registers */
 	pushq	%r15
@@ -57,8 +57,9 @@ isr_save:
 	movq	%rcx, 134(%rsp)
 	*/
 
-	movq	%rsp, %rax
-	movabs	%rax, interrupt_stack_ptr
+	movq	%rsp, %rbx
+	movabs	current_pcb, %rax
+	movq	%rbx, (%rax)
 
 	/* Grab the error code off the stack */
 	movq	120(%rsp), %rax
@@ -78,7 +79,11 @@ isr_save:
 
 	jmp isr_restore
 
+.globl isr_restore
 isr_restore:
+	movabs	current_pcb, %rax		
+	movq	(%rax), %rsp
+
 	/* Restore all the registers */
 	popq	%rdi
 	popq	%rsi

@@ -3,12 +3,14 @@
 #include "tss.h"
 #include "apic.h"
 #include "safety.h"
+#include "imports.h"
 
 #include "kernel/klib.h"
 
 #include "arch/x86_64/panic.h"
 #include "arch/x86_64/kprintf.h"
 #include "arch/x86_64/virt_memory/physical.h"
+#include "kernel/scheduler/pcb.h"
 
 #define IDT_SEG_PRESENT (0x1 << 15)
 
@@ -31,9 +33,6 @@ typedef struct
 } __attribute__((packed)) IDT_Gate;
 
 COMPILE_ASSERT(sizeof(IDT_Gate) == 16);
-
-#define GDT_CODE_SEG 0x10
-#define GDT_DATA_SEG 0x20
 
 extern IDT_Gate start_idt_64[256];
 IDT_Gate* idt;
@@ -60,19 +59,24 @@ static void set_idt_entry(uint64_t index, interrupt_handler fn_ih)
 	idt[index].reserved = 0;
 }
 
-uint64_t interrupt_stack_ptr = 0;
 static void default_handler(uint64_t vector, uint64_t code)
 {
+	extern PCB* current_pcb;
+
 	kprintf("Interrupt! vector: %u - Code: %u \n", vector, code);
 
 	if (vector == 14)
 	{
-		uint64_t rip = 0;
-		__asm__ volatile("movq %0, %%rax" :: "m"(interrupt_stack_ptr));
-		__asm__ volatile("movq 136(%rax), %rax");
-		__asm__ volatile("movq %%rax, %0" : "=m"(rip));
-		kprintf("EIP: 0x%x\n", rip);
+		uint64_t context_addr = (uint64_t)current_pcb->context;
+
+		Context* context = (Context*)context_addr;
+		kprintf("Faulting address: 0x%x\n", context->rip);
 		panic("Page Fault");
+	}
+
+	if (vector == 13)
+	{
+		panic("GPF!");
 	}
 
 	pic_acknowledge(vector);
