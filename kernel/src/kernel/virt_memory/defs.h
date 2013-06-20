@@ -14,7 +14,8 @@ extern uint8_t virt_map_phys(void* table, const uint64_t virt_addr,
 						const uint64_t page_size);
 
 extern uint8_t virt_map_page(void* table, const uint64_t virt_addr, 
-						const uint64_t flags, const uint64_t page_size);
+						const uint64_t flags, const uint64_t page_size,
+						uint64_t* phys_addr);
 
 extern void virt_unmap_page(void* table, uint64_t virt_addr);
 
