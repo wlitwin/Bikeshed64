@@ -4,6 +4,10 @@
 #include "safety.h"
 #include "inttypes.h"
 
+#ifdef BIKESHED_X86_64
+#include "arch/x86_64/elf/imports.h"
+#endif
+
 typedef uint64_t Elf64_Addr; // Unsigned program address
 COMPILE_ASSERT(sizeof(Elf64_Addr) == 8);
 
@@ -37,14 +41,6 @@ typedef uint8_t ELF_Error;
 #define ELF_DATA2_LSB 1
 #define ELF_DATA2_MSB 2
 #define ELF_OSABI_SYSV 0
-
-//-----------------------------------------------------------------------------
-// TODO these are architecture specific
-//-----------------------------------------------------------------------------
-
-#define ELF_DATA2 ELF_DATA2_LSB
-#define ELF_ABI ELF_OSABI_SYSV
-//-----------------------------------------------------------------------------
 
 #define El_MAG0 0x7F
 #define El_MAG1 'E'
@@ -84,6 +80,59 @@ typedef struct
 	Elf64_Half	e_shstrndx;		/* Section name string table index */
 } ELF64_Ehdr;
 
+COMPILE_ASSERT(sizeof(ELF64_Ehdr) == 64);
+
+typedef struct
+{
+	Elf64_Word	sh_name;		/* Section name */
+	Elf64_Word	sh_type;		/* Section type */
+	Elf64_Xword	sh_flags;		/* Section attributes */
+	Elf64_Addr	sh_addr;		/* Virtual address in memory */
+	Elf64_Off	sh_offset;		/* Offset in file */
+	Elf64_Xword	sh_size;		/* Size of section */
+	Elf64_Word	sh_info;		/* Miscellaneous information */
+	Elf64_Xword	sh_addralign;	/* Address alignment boundary */
+	Elf64_Xword	sh_entsize;		/* Size of entries, if section has table */
+} ELF64_Shdr;
+
+COMPILE_ASSERT(sizeof(ELF64_Shdr) == 64);
+
+typedef struct
+{
+	Elf64_Word	st_name;		/* Symbol name */
+	uint8_t		st_info;		/* Type and Binding attributes */
+	uint8_t		st_other;		/* Reserved */
+	Elf64_Half	st_shndx;		/* Section table index */
+	Elf64_Addr	st_value;		/* Symbol value */
+	Elf64_Xword	st_size;		/* Size of object (e.g., common) */
+} ELF64_Sym;
+
+COMPILE_ASSERT(sizeof(ELF64_Sym) == 24);
+
+typedef struct
+{
+	Elf64_Word	p_type;			/* Type of segment */
+	Elf64_Word	p_flags;		/* Segment attributes */
+	Elf64_Off	p_offset;		/* Offset in file */
+	Elf64_Addr	p_vaddr;		/* Virtual address in memory */
+	Elf64_Addr	p_paddr;		/* Reserved */
+	Elf64_Xword	p_filesz;		/* Size of segment in file */
+	Elf64_Xword	p_memsz;		/* Size of segment in memory */
+	Elf64_Xword	p_align;		/* Alignment of segment */
+} ELF64_Phdr;
+
+COMPILE_ASSERT(sizeof(ELF64_Phdr) == 56);
+
+typedef struct
+{
+	Elf64_Sxword	d_tag;
+	union
+	{
+		Elf64_Xword	d_val;
+		Elf64_Addr	d_ptr;
+	} d_un;
+} ELF64_Dyn;
+
 /* Create a new process from an ELF file.
  *
  * Parameters:
@@ -92,6 +141,6 @@ typedef struct
  * Returns:
  *    1 if successfully created process, 0 otherwise.
  */
-ELF_Error elf_create_process(void* elf_file);
+ELF_Error elf_create_process(void* elf_file, void* page_table);
 
 #endif

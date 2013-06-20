@@ -1,8 +1,9 @@
 #include "elf.h"
 
+#include "kernel/klib.h"
 #include "kernel/virt_memory/defs.h"
 
-ELF_Error elf_create_process(void* elf_file)
+ELF_Error elf_create_process(void* elf_file, void* page_table)
 {
 	ELF64_Ehdr* elf_hdr = (ELF64_Ehdr*)elf_file;
 
@@ -34,11 +35,15 @@ ELF_Error elf_create_process(void* elf_file)
 	}
 
 	// Check the file type
-	if (elf_hdr->e_type != ET_EXEC &&
-		elf_hdr->e_type != ET_DYN)
+	if (elf_hdr->e_type != ET_EXEC)// &&
+		//elf_hdr->e_type != ET_DYN)
 	{
 		return ELF_ERROR_BAD_TYPE;
 	}
+
+	virt_reset_table(page_table);
+
+
 
 	// Otherwise we're good
 	return ELF_NO_ERROR;
