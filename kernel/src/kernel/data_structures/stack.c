@@ -1,11 +1,5 @@
 #include "stack.h"
 
-
-uint64_t stack_size(const Stack* stack)
-{
-	return stack->size;
-}
-
 void stack_init(Stack* stack)
 {
 	stack->size = 0;
@@ -14,7 +8,7 @@ void stack_init(Stack* stack)
 
 void stack_push(Stack* stack, StackNode* node)
 {
-	if (stack->top == NULL)
+	if (stack_empty(stack))
 	{
 		node->next = NULL;
 		stack->size = 1;
@@ -28,14 +22,9 @@ void stack_push(Stack* stack, StackNode* node)
 	stack->top = node;
 }
 
-uint8_t stack_empty(const Stack* stack)
-{
-	return stack->size == 0;
-}
-
 StackNode* stack_pop(Stack* stack)
 {
-	if (stack->top == NULL)
+	if (stack_empty(stack))
 	{
 		return NULL;
 	}

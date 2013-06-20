@@ -62,7 +62,11 @@ StackNode* stack_pop(Stack* stack);
  * Returns:
  *    1 if the stack is empty, 0 otherwise
  */
-uint8_t stack_empty(const Stack* stack);
+static inline
+uint8_t stack_empty(const Stack* stack)
+{
+	return stack->size == 0;
+}
 
 /* Get the size of the stack
  *
@@ -72,7 +76,11 @@ uint8_t stack_empty(const Stack* stack);
  * Returns:
  *    The size of the stack
  */
-uint64_t stack_size(const Stack* stack);
+static inline
+uint64_t stack_size(const Stack* stack)
+{
+	return stack->size;
+}
 
 #endif
 
