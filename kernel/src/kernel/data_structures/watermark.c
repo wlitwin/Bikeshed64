@@ -14,8 +14,8 @@ void* water_mark_alloc(WaterMarkAllocator* wma, const uint64_t size)
 	wma->current_address -= size;
 	while (wma->current_address < wma->page_address)
 	{
-		const uint64_t location = (wma->page_address - PAGE_LARGE_SIZE) + 1;
-		if (!virt_map_page(kernel_table, location, PG_FLAG_RW, PAGE_LARGE))
+		const uint64_t location = (wma->page_address - PAGE_LARGE_SIZE);
+		if (!virt_map_page(kernel_table, location, PG_FLAG_RW, PAGE_LARGE, NULL))
 		{
 			panic("WaterMark: Failed to allocate page!");
 		}
@@ -23,7 +23,7 @@ void* water_mark_alloc(WaterMarkAllocator* wma, const uint64_t size)
 		wma->page_address -= PAGE_LARGE_SIZE;
 	}
 
-	void* returnVal = (void*)(wma->current_address+1);
+	void* returnVal = (void*)(wma->current_address);
 
 	return returnVal;
 }
