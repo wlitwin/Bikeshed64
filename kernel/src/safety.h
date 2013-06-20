@@ -12,6 +12,8 @@
 #define S_(X) S(X)
 #define S__LINE__ S_(__LINE__)
 
+#define UNUSED(X) ((void)X)
+
 #define ASSERT(X) if (!(X)) panic("ASSERT FAILED: " __FILE__ ":" S__LINE__)
 
 #endif
