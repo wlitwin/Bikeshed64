@@ -29,12 +29,6 @@
  */
 extern uint8_t processor_virt_bits;
 
-static inline
-void write_cr3(void* page_table)
-{
-	__asm__ volatile("mov %%rax, %%cr3" : : "a"((uint64_t)page_table));
-}
-
 void virt_memory_init()
 {
 	kernel_table = (void*) &kernel_PML4;	
@@ -48,7 +42,8 @@ void virt_memory_init()
 }
 
 uint8_t virt_map_page(void* _table, const uint64_t virt_addr,
-		const uint64_t flags, const uint64_t page_size)
+		const uint64_t flags, const uint64_t page_size,
+		uint64_t* phys_addr)
 {
 	uint64_t addr = 0;
 	if (page_size == PAGE_LARGE)
@@ -72,6 +67,11 @@ uint8_t virt_map_page(void* _table, const uint64_t virt_addr,
 		panic("virt_map_page: Invalid page size\n");
 	}
 
+	if (phys_addr != NULL)
+	{
+		*phys_addr = addr;
+	}
+
 	if (addr == 0)
 	{
 		return 0;
@@ -89,6 +89,13 @@ uint8_t virt_map_phys(void* _table, const uint64_t virt_addr, const uint64_t phy
 	const uint64_t pdpt_index = PDPT_INDEX(virt_addr);
 	const uint64_t pdt_index  = PDT_INDEX(virt_addr);
 	const uint64_t pt_index   = PT_INDEX(virt_addr);
+
+#ifdef DEBUG_PAGING
+	kprintf("PML4: %u\n", pml4_index);
+	kprintf("PDPT: %u\n", pdpt_index);
+	kprintf("PDT : %u\n", pdt_index);
+	kprintf("PT  : %u\n", pt_index);
+#endif
 
 	const uint64_t safe_flags = flags & 
 		(PG_FLAG_RW | PG_FLAG_USER | PG_FLAG_PWT | PG_FLAG_PCD | PG_FLAG_XD);
@@ -125,8 +132,12 @@ uint8_t virt_map_phys(void* _table, const uint64_t virt_addr, const uint64_t phy
 
 	PD_Table* pd_table = PHYS_TO_VIRT(PDPTE_TO_PDT(pdp_table->entries[pdpt_index]));
 
-	if ((pd_table->entries[pdt_index] & PDT_PRESENT) > 0)
+	// Check if something is already mapped here
+	if ((pd_table->entries[pdt_index] & PDT_PAGE_SIZE) > 0 &&
+		(pd_table->entries[pdt_index] & PDT_PRESENT) > 0)
 	{
+		kprintf("Vaddr: 0x%x - Paddr: 0x%x\n", virt_addr, phys_addr);
+		kprintf("PD Mapped to: 0x%x\n", pd_table->entries[pdt_index]);
 		panic("Address already mapped!\n");
 	}
 
@@ -153,6 +164,14 @@ uint8_t virt_map_phys(void* _table, const uint64_t virt_addr, const uint64_t phy
 		}
 
 		P_Table* p_table = PHYS_TO_VIRT(PDTE_TO_PT(pd_table->entries[pdt_index]));
+
+		// Check if something is already mapped here
+		if ((p_table->entries[pt_index] & PT_PRESENT) > 0)
+		{
+			kprintf("Vaddr: 0x%x - Paddr: 0x%x\n", virt_addr, phys_addr);
+			kprintf("PT Mapped to: 0x%x\n", p_table->entries[pt_index]);
+			panic("Address already mapped!\n");
+		}
 
 		p_table->entries[pt_index] = (uint64_t)MASK_4KIB(phys_addr) | PT_PRESENT;
 		p_table->entries[pt_index] |= safe_flags;
@@ -321,18 +340,26 @@ void* virt_clone_mapping(const void* _other)
 {
 	PML4_Table* other = (PML4_Table*) PHYS_TO_VIRT(_other);
 	PML4_Table* new_table = (PML4_Table*) PHYS_TO_VIRT(phys_alloc_4KIB());
+
 	if (new_table == NULL)
 	{
 		return NULL;
 	}
 
-	for (uint64_t pml4_index = 0; pml4_index < 512; ++pml4_index)
+	memset(new_table, 0, sizeof(PML4_Table));
+	/*for (uint64_t pml4_index = 0; pml4_index < 256; ++pml4_index)
 	{
 		// Set the entries equal, except clear the writable flag
 		// and set the copy-on-write bit. The COW has not been fully
 		// thought out, so it will most likely change quite a bit.
 		const uint64_t entry = other->entries[pml4_index];
 		new_table->entries[pml4_index] = (entry & ~(0x2)) | COW_BITS;
+	}
+	*/
+
+	for (uint64_t pml4_index = 256; pml4_index < 512; ++pml4_index)
+	{
+		new_table->entries[pml4_index] = other->entries[pml4_index];
 	}
 
 	return VIRT_TO_PHYS(new_table);

@@ -37,6 +37,12 @@
 #define PML4_PRESENT 0x1
 #define PML4_WRITABLE 0x2
 
+static inline
+void write_cr3(void* page_table)
+{
+	__asm__ volatile("movq %%rax, %%cr3" : : "a"((uint64_t)page_table));
+}
+
 #define invlpg(X) __asm__ volatile("invlpg %0" :: "m" (X))
 
 /* This is defined in prekernel.s
@@ -91,7 +97,8 @@ uint8_t virt_map_phys(void* table, const uint64_t virt_addr, const uint64_t phys
  *    1 if successfully mapped, 0 if an allocation failed
  */
 uint8_t virt_map_page(void* table, const uint64_t virt_addr, 
-						const uint64_t flags, const uint64_t page_size);
+						const uint64_t flags, const uint64_t page_size, 
+						uint64_t* phys_addr);
 /* Unmap a virtual address
  *
  * Parameters:
