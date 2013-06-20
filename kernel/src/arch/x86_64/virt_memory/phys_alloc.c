@@ -93,9 +93,6 @@ void setup_physical_allocator()
 		wasted_ram += length;
 	}
 
-	kprintf("Wasted: %u bytes (%u KiB) of RAM\n", wasted_ram, wasted_ram/_1_KIB);
-	kprintf("Total allocatable RAM: %u MiB\n", allocatable_ram/_1_MIB);
-
 	//test_2MIB_alloc();
 	//test_4KIB_alloc();
 }
@@ -148,16 +145,16 @@ void* phys_alloc_2MIB()
 		return NULL;
 	}
 
-	void* final_value = (void*)((uint64_t)retVal - KERNEL_BASE);
+	void* final_value = VIRT_TO_PHYS(retVal);
 
-	//kprintf("2MIB: 0x%x \n", final_value);
+	kprintf("2MIB: 0x%x \n", final_value);
 
 	return final_value;
 }
 
 void phys_free_2MIB(void* ptr)
 {
-	const uint64_t address = (uint64_t)ptr + KERNEL_BASE;
+	const uint64_t address = (uint64_t)PHYS_TO_VIRT(ptr);
 	stack_push(&stack_2MIB, (void*)MASK_2MIB(address));
 }
 
@@ -169,6 +166,13 @@ static void pool_init(Pool* pool)
 	pool->next = NULL;
 	pool->prev = NULL;
 	pool->on_list = 0;
+
+	kprintf("POOL INIT\n");
+	kprintf("implicit_next: 0x%x\n", pool->implicit_next);
+	kprintf("max_address:   0x%x\n", pool->max_address);
+	kprintf("next:          0x%x\n", pool->next);
+	kprintf("prev:          0x%x\n", pool->prev);
+	kprintf("on_list:       0x%x\n", pool->on_list);
 }
 
 static uint8_t pool_empty(Pool* pool)
@@ -191,6 +195,7 @@ static void pool_free(Pool* pool, void* ptr)
 {
 	if (ptr <= (void*)pool || ptr >= pool->max_address)
 	{
+		kprintf("POOL: 0x%x - PTR: 0x%x - MAX: 0x%x \n", pool, ptr, pool->max_address);
 		panic("Pool freeing bad ptr");
 	}
 
@@ -227,7 +232,7 @@ void* phys_alloc_4KIB()
 			return NULL;
 		}
 
-		pool_4KIB = (Pool*) PHYS_TO_VPHYS(pool_4KIB);
+		pool_4KIB = (Pool*) PHYS_TO_VIRT(pool_4KIB);
 
 		pool_init(pool_4KIB);
 		pool_4KIB->on_list = 1;
@@ -244,15 +249,15 @@ void* phys_alloc_4KIB()
 		pool_4KIB = p_next;
 	}
 
-	void* final_value = (void*)(retVal - KERNEL_BASE);
-	//kprintf("4KIB: 0x%x \n", final_value);
+	void* final_value = VIRT_TO_PHYS(retVal);
+	kprintf("4KIB: 0x%x \n", final_value);
 	return final_value;
 }
 
 void phys_free_4KIB(void* ptr)
 {
 	// Figure out which pool it belongs to	
-	const uint64_t address = (uint64_t)ptr + KERNEL_BASE;
+	const uint64_t address = (uint64_t)PHYS_TO_VIRT(ptr);
 	Pool* pool = (Pool*) MASK_2MIB(address);
 
 	pool_free(pool, (void*)address);

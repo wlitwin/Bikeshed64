@@ -9,11 +9,14 @@
 extern uint64_t __KERNEL_END;
 
 #define KERNEL_START 0x100000
-#define KERNEL_END ((uint64_t)&__KERNEL_END)
+// TODO - Do something better
+#define KERNEL_END (0x400000) //(uint64_t)&__KERNEL_END)
 
 #define KERNEL_BASE 0xFFFF800000000000
 
-#define PHYS_TO_VPHYS(X) ((void*)((uint64_t)(X) + KERNEL_BASE))
+#define PHYS_TO_VIRT(X) ((void*)((uint64_t)(X) + KERNEL_BASE))
+
+#define VIRT_TO_PHYS(X) ((void*)((uint64_t)(X) - KERNEL_BASE))
 
 //=============================================================================
 // Memory Map BIOS definitions

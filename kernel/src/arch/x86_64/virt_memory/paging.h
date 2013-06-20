@@ -40,8 +40,10 @@
 #define invlpg(X) __asm__ volatile("invlpg %0" :: "m" (X))
 
 /* This is defined in prekernel.s
+ *
+ * It's really a PML4_Table not a void*
  */
-extern uint64_t kernel_PML4;
+extern PML4_Table kernel_PML4;
 
 /* This is defined in prekernel.s
  */
@@ -50,10 +52,6 @@ extern PDP_Table kernel_PDPTE;
 /* This is defined in prekernel.s
  */
 extern PD_Table kernel_PDT;
-
-/* Pointer to the current kernel PML4
- */
-PML4_Table* KERNEL_PML4;
 
 /* Initialize the virtual memory system, consequently it initializes
  * the physical memory system because that's needed by the virtual
@@ -108,6 +106,14 @@ void virt_unmap_page(void* table, uint64_t virt_addr);
  *    table - The PML4 table, the top most paging structure
  */
 void virt_cleanup_table(void* table);
+
+/* Resets a page table to a default state. It is not suitable for running
+ * processes, but it is suitable for creating a new process context.
+ *
+ * Parameters:
+ *    table - The page table to reset
+ */
+void virt_reset_table(void* table);
 
 /* Clones a PML4 mapping. This does a copy-on-write clone. So
  * only the entry values are copied, but not the pages that are

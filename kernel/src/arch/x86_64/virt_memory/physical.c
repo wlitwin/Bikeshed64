@@ -56,6 +56,19 @@ void phys_memory_init()
 	ram_info info;
 	get_total_usable_ram(&info);
 
+	kprintf("Modified Memory Map\n");
+	const uint32_t mmap_size1 = *((uint32_t*) MMAP_COUNT);
+	MMapEntry* mmap_array1 = (MMapEntry*) MMAP_ADDRESS;
+	for (uint32_t i = 0; i < mmap_size1; ++i)
+	{
+		kprintf("%d - Base: 0x%x - Length: 0x%x - Type: %d\n", 
+				i, 
+				mmap_array1[i].base, 
+				mmap_array1[i].length, 
+				mmap_array1[i].type);
+	}
+	
+
 	uint64_t total_usable_ram = info.total_usable_ram; // In Bytes
 
 	kprintf("highest address: 0x%x\n", info.highest_address);
@@ -176,6 +189,13 @@ void phys_memory_init()
 	kprintf("Need %u PDs\n", num_pds);
 	kprintf("Need %u PDPTs\n", num_pdpts);
 	kprintf("Need %u KiB space\n", space_needed/_1_KIB);
+
+	// Now clear the lower half entries from the kernel's page table
+	PML4_Table* pml4_table = (PML4_Table*) PHYS_TO_VIRT(kernel_table);
+	for (uint64_t i = 0; i < 256; ++i)
+	{
+		pml4_table->entries[i] = 0;	
+	}
 }
 
 /* This function creates a virtual mapping to all of physical memory inside of
@@ -233,7 +253,7 @@ void create_paging_structures(const page_struct_info* psi)
 	}
 
 	// Defined in paging.h
-	PML4_Table* pml4_table = KERNEL_PML4;
+	PML4_Table* pml4_table = &kernel_PML4;
 
 	// TODO rest of the PDPTs
 	for (uint64_t pml4_index = 1; pml4_index < PML4_ENTRIES && pdpts_left > 0; ++pml4_index)
@@ -351,7 +371,7 @@ void get_total_usable_ram(ram_info* info)
 			kprintf("Case 2: ");
 			// Update the base and length
 			mmap_array[i].base = KERNEL_END;
-			mmap_array[i].length = max_addr - base;
+			mmap_array[i].length = max_addr - KERNEL_END;
 		}
 		/* Case 3 */
 		else if (base >= KERNEL_START && max_addr <= KERNEL_END)
