@@ -1,5 +1,6 @@
 CC=gcc
 CFLAGS=-m64 \
+	   -Wwrite-strings \
 	   -mcmodel=large \
 	   -ffreestanding \
 	   -nostdlib \
