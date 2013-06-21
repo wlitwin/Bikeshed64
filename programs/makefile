@@ -42,8 +42,8 @@ $(OBJ_DIR)/%.s.o : %.s
 	@mkdir -p $(shell dirname $@)
 	@$(AS) $(AS_FLAGS) $^ -o $@
 
-bin/% : $(OBJ_DIR)/src/startup.c.o obj/src/%/*.o
-	$(LD) $(LD_FLAGS) obj/src/startup.c.o $(shell find obj/src/$(shell basename $@) -name "*.o") -o $@
+bin/% : $(OBJ_DIR)/src/startup.s.o obj/src/%/*.o
+	$(LD) $(LD_FLAGS) obj/src/startup.s.o $(shell find obj/src/$(shell basename $@) -name "*.o") -o $@
 
 clean:
 	@echo Cleaning Programs
