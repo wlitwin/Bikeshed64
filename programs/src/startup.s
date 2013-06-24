@@ -1,8 +1,11 @@
 .globl main
+.globl exit
 
-.globl
+.globl _start
 _start:
 	call main
+
+	call exit
 
 _halt:
 	hlt
