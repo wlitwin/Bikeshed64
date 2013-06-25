@@ -24,6 +24,37 @@ void queue_enqueue(Queue* q, QueueNode* node)
 	++q->size;
 }
 
+void queue_enqueue_prio(Queue* queue, QueueNode* node, 
+		uint8_t cmp(const void* d1, const void* d2))
+{
+	if (queue->size == 0)
+	{
+		queue_enqueue(queue, node);
+	}
+	else
+	{
+		const void* node_data = node->data;
+		QueueNode* other = queue->head;
+		while (other != NULL && cmp(node_data, other->data) > 0)
+		{
+			other = other->next;
+		}
+
+		if (other == NULL)
+		{
+			// We fell off the list, so node should be the last element
+			node->next = NULL;
+			queue->tail->next = node;
+			queue->tail = node;
+		}
+		else
+		{
+			node->next = other->next;
+			other->next = node;
+		}
+	}
+}
+
 QueueNode* queue_dequeue(Queue* q)
 {
 	if (q->size == 0)

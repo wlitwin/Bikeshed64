@@ -36,6 +36,19 @@ void queue_init(Queue* queue);
  */
 void queue_enqueue(Queue* queue, QueueNode* node);
 
+/* Add to the queue, but use a comparison function. This allows the queue
+ * to be a priority queue.
+ *
+ * Parameters:
+ *    queue - The Queue to add the node to
+ *    node - The node to add
+ *    cmp - The comparison function, this function will be given the passed
+ *          in queue node's data and the node to compare. This function should
+ *          return -1 if d1 < d2, 0 if d1 == d2, and 1 if d1 > d2
+ */
+void queue_enqueue_prio(Queue* queue, QueueNode* node, 
+		uint8_t cmp(const void* d1, const void* d2));
+
 /* Take an item off the front of the queue. Returns NULL if there
  * are no more items in the queue.
  *
