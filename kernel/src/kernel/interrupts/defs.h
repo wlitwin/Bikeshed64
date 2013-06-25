@@ -14,4 +14,8 @@ extern void interrupts_init(void);
  */
 extern void interrupts_install_isr(uint64_t vector, interrupt_handler handler);
 
+#ifdef BIKESHED_X86_64
+#include "arch/x86_64/interrupts/interrupts.h"
+#endif
+
 #endif
