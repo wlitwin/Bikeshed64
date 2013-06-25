@@ -7,9 +7,15 @@
 #include "arch/x86_64/interrupts/imports.h"
 #endif
 
-typedef uint8_t State;
 typedef uint8_t Priority;
 typedef uint32_t Pid;
+
+typedef enum
+{
+	READY = 0,
+	RUNNING,
+	KILLED,
+} State;
 
 typedef struct
 {
@@ -24,7 +30,19 @@ typedef struct
 	// 1 byte fields
 	State state;
 	Priority priority;
-	uint8_t quantum;
 } PCB;
+
+typedef struct _Thread
+{
+	// 8 byte fields
+	PCB* pcb;
+	Context* context;
+	struct _Thread* next;
+	struct _Thread* prev;
+
+	// 1 byte fields
+	State state;
+	Priority priority;
+} Thread;
 
 #endif
