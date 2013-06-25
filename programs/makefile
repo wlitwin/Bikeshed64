@@ -15,7 +15,8 @@ CFLAGS=-m64 \
 	   -pedantic \
 	   -fno-builtin \
 	   -std=c99 \
-	   -DBIKESHED_X86_64
+	   -DBIKESHED_X86_64 \
+	   -I../kernel/src/
 
 LD=ld
 LD_FLAGS=-m elf_x86_64 -Tlinker.ld -z max-page-size=4096
@@ -32,6 +33,11 @@ USER_OBJECTS=$(shell find src/ -name '*.[cs]' | sed -e 's/^\(.*\.[cs]\)$$/obj\/\
 
 all: $(USER_OBJECTS) $(USER_PROGS)
 
+$(OBJ_DIR)/src/ulib.c.o : src/ulib.c
+	@echo " - Compiling " $^
+	@mkdir -p $(shell dirname $@)
+	@$(CC) $(CFLAGS) -Isrc/ -I../kernel/src/ -c $^ -o $@
+
 $(OBJ_DIR)/%.c.o : %.c
 	@echo " - Compiling" $^
 	@mkdir -p $(shell dirname $@)
@@ -42,8 +48,8 @@ $(OBJ_DIR)/%.s.o : %.s
 	@mkdir -p $(shell dirname $@)
 	@$(AS) $(AS_FLAGS) $^ -o $@
 
-bin/% : $(OBJ_DIR)/src/startup.s.o obj/src/%/*.o
-	$(LD) $(LD_FLAGS) obj/src/startup.s.o $(shell find obj/src/$(shell basename $@) -name "*.o") -o $@
+bin/% : $(OBJ_DIR)/src/startup.s.o $(OBJ_DIR)/src/ulib.c.o obj/src/%/*.o
+	$(LD) $(LD_FLAGS) obj/src/startup.s.o obj/src/ulib.c.o $(shell find obj/src/$(shell basename $@) -name "*.o") -o $@
 
 clean:
 	@echo Cleaning Programs
