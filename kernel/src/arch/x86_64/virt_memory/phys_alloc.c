@@ -154,6 +154,17 @@ void* phys_alloc_2MIB()
 	return final_value;
 }
 
+void* phys_alloc_2MIB_safe(const char* error)
+{
+	void* alloc_ptr = phys_alloc_2MIB();
+	if (alloc_ptr == NULL)
+	{
+		panic(error);
+	}
+
+	return alloc_ptr;
+}
+
 void phys_free_2MIB(void* ptr)
 {
 	const uint64_t address = (uint64_t)PHYS_TO_VIRT(ptr);
@@ -258,6 +269,17 @@ void* phys_alloc_4KIB()
 	kprintf("4KIB: 0x%x \n", final_value);
 #endif
 	return final_value;
+}
+
+void* phys_alloc_4KIB_safe(const char* error)
+{
+	void* alloc_ptr = phys_alloc_4KIB();
+	if (alloc_ptr == NULL)
+	{
+		panic(error);
+	}
+
+	return alloc_ptr;
 }
 
 void phys_free_4KIB(void* ptr)
