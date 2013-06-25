@@ -16,22 +16,30 @@
 //extern inline void timer_interrupt(void);
 void timer_isr(uint64_t vector, uint64_t error_code);
 
+extern void timer_interrupt(void);
+
 void timer_init()
 {
 	_outb(CMD_PORT, CMD_ONE_SHOT | CMD_LO_HI_BYTE | CMD_SEL_CH0);	
 
 	interrupts_install_isr(VEC_TIMER, &timer_isr);
 
-	timer_one_shot(0);
+	timer_one_shot();
 }
 
-void timer_one_shot(uint16_t time)
+static uint16_t timer_delay = 0;
+void timer_set_delay(const uint64_t delay)
+{
+	timer_delay = (uint16_t)delay;
+}
+
+void timer_one_shot()
 {
 	__asm__ volatile ("pushfq");
 	__asm__ volatile ("cli");
 
-	const uint8_t lo_byte = time & 0xFFFF;
-	const uint8_t hi_byte = (time >> 16) & 0xFFFF;
+	const uint8_t lo_byte = timer_delay & 0xFFFF;
+	const uint8_t hi_byte = (timer_delay >> 16) & 0xFFFF;
 
 	_outb(CH0_DATA_PORT, lo_byte);
 	_outb(CH0_DATA_PORT, hi_byte);
@@ -42,9 +50,9 @@ void timer_one_shot(uint16_t time)
 void timer_isr(uint64_t vector, uint64_t error_code)
 {
 	UNUSED(error_code);
-//	timer_interrupt();
+	timer_interrupt();
 
-	kprintf("Timer!");
+//	kprintf("Timer!");
 
 	pic_acknowledge(vector);
 }

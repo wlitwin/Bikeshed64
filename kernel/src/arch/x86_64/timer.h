@@ -7,6 +7,8 @@
 
 void timer_init(void);
 
-void timer_one_shot(uint16_t time);
+void timer_one_shot(void);
+
+void timer_set_delay(const uint64_t delay);
 
 #endif
