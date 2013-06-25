@@ -59,18 +59,48 @@ static void set_idt_entry(uint64_t index, interrupt_handler fn_ih)
 	idt[index].reserved = 0;
 }
 
+static void dump_context(Context* context)
+{
+	kprintf("CONTEXT DUMP:\n");
+	kprintf("RDI: 0x%x\n", context->rdi);
+	kprintf("RSI: 0x%x\n", context->rsi);
+	kprintf("RAX: 0x%x\n", context->rax);
+	kprintf("RBX: 0x%x\n", context->rbx);
+	kprintf("RCX: 0x%x\n", context->rcx);
+	kprintf("RDX: 0x%x\n", context->rdx);
+	kprintf("rbp: 0x%x\n", context->rbp);
+	kprintf("r8 : 0x%x\n", context->r8);
+	kprintf("r9 : 0x%x\n", context->r9);
+	kprintf("r10: 0x%x\n", context->r10);
+	kprintf("r11: 0x%x\n", context->r11);
+	kprintf("r12: 0x%x\n", context->r12);
+	kprintf("r13: 0x%x\n", context->r13);
+	kprintf("r14: 0x%x\n", context->r14);
+	kprintf("r15: 0x%x\n", context->r15);
+	kprintf("vec: 0x%x\n", context->vector);
+	kprintf("err: 0x%x\n", context->error_code);
+	kprintf("rip: 0x%x\n", context->rip);
+	kprintf("cs : 0x%x\n", context->cs);
+	kprintf("rfl: 0x%x\n", context->rflags);
+	kprintf("rsp: 0x%x\n", context->rsp);
+	kprintf("ss : 0x%x\n", context->ss);
+}
+
 static void default_handler(uint64_t vector, uint64_t code)
 {
 	extern PCB* current_pcb;
 
 	kprintf("Interrupt! vector: %u - Code: %u \n", vector, code);
+	uint64_t context_addr = (uint64_t)current_pcb->context;
+	Context* context = (Context*)context_addr;
+	kprintf(" PCB: 0x%x\n", current_pcb);
+	kprintf(" Context: 0x%x\n", context);
+	kprintf(" Faulting address: 0x%x\n", context->rip);
+	dump_context(context);
 
 	if (vector == 14)
 	{
-		uint64_t context_addr = (uint64_t)current_pcb->context;
 
-		Context* context = (Context*)context_addr;
-		kprintf("Faulting address: 0x%x\n", context->rip);
 		panic("Page Fault");
 	}
 
@@ -80,6 +110,13 @@ static void default_handler(uint64_t vector, uint64_t code)
 	}
 
 	pic_acknowledge(vector);
+}
+
+static void serial_handler(uint64_t vector, uint64_t code)
+{
+	// Do nothing
+	UNUSED(vector);
+	UNUSED(code);
 }
 
 void interrupts_install_isr(uint64_t index, void handler(uint64_t, uint64_t))
@@ -125,6 +162,8 @@ void interrupts_init()
 		set_idt_entry(i, isr_stub_table[i]);
 		interrupts_install_isr(i, &default_handler);
 	}
+
+	interrupts_install_isr(36, serial_handler);
 
 	// Initialize the APIC so interrupts from it don't
 	// come to the exception interrupt vectors. Currently
