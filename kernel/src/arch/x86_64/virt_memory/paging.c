@@ -21,13 +21,29 @@
 #define PDPTE_TO_PDT(X)  ((PD_Table*) ((X) & 0x7FFFFFF000))
 #define PDTE_TO_PT(X)    ((P_Table*)  ((X) & 0x7FFFFFF000))
 
-#define COW_BITS 0x100 // Bit 9
+#define PAGE_COPY_FLAGS (PG_SAFE_FLAGS | 0x1)
+
+// Copy on write macros
+#define PAGE_COW 0x100 // Bit 9
+#define PAGE_COW_WR 0x200 // Bit 10
+#define PAGE_COW_REF 0x7FF
+#define PAGE_IS_COW(X) (((X) & PAGE_COW) > 0)
+#define PAGE_GET_REF(X) (((X) >> 52) & PAGE_COW_REF)
+#define PAGE_SET_REF(PG,VAL) ((PG) | (((VAL) & PAGE_COW_REF) << 52))
+#define PAGE_COW_INC(PG) PAGE_SET_REF(PG,(PAGE_GET_REF(PG))+1)
+#define PAGE_COW_DEC(PG) PAGE_SET_REF(PG,(PAGE_GET_REF(PG))-1)
 
 /* How many virtual address bits the processor has
  *
  * Defined in prekernel.s
  */
 extern uint8_t processor_virt_bits;
+
+void* kernel_table;
+
+//=============================================================================
+//
+//=============================================================================
 
 void virt_memory_init()
 {
@@ -40,6 +56,10 @@ void virt_memory_init()
 
 	phys_memory_init();
 }
+
+//=============================================================================
+//
+//=============================================================================
 
 uint8_t virt_map_page(void* _table, const uint64_t virt_addr,
 		const uint64_t flags, const uint64_t page_size,
@@ -79,6 +99,10 @@ uint8_t virt_map_page(void* _table, const uint64_t virt_addr,
 
 	return virt_map_phys(_table, virt_addr, addr, flags, page_size);
 }
+
+//=============================================================================
+//
+//=============================================================================
 
 uint8_t virt_map_phys(void* _table, const uint64_t virt_addr, const uint64_t phys_addr,
 		const uint64_t flags, const uint64_t page_size)
@@ -186,6 +210,10 @@ uint8_t virt_map_phys(void* _table, const uint64_t virt_addr, const uint64_t phy
 	return 1;
 }
 
+//=============================================================================
+//
+//=============================================================================
+
 void virt_unmap_page(void* _table, uint64_t virt_addr)
 {
 	PML4_Table* table = (PML4_Table*) PHYS_TO_VIRT(_table);
@@ -243,6 +271,10 @@ void virt_unmap_page(void* _table, uint64_t virt_addr)
 	// TODO invlpg
 }
 
+//=============================================================================
+//
+//=============================================================================
+
 static void cleanup_page_table(P_Table* p_table)
 {
 	for (uint64_t pt_index = 0; pt_index < 512; ++pt_index)
@@ -256,9 +288,15 @@ static void cleanup_page_table(P_Table* p_table)
 	}
 
 	// Cleanup the actual page table
+#ifdef DEBUG_PAGING
 	kprintf("Cleaning page table: 0x%x\n", p_table);
+#endif
 	phys_free_4KIB(VIRT_TO_PHYS(p_table));
 }
+
+//=============================================================================
+//
+//=============================================================================
 
 static void cleanup_page_directory_table(PD_Table* pd_table)
 {
@@ -280,9 +318,15 @@ static void cleanup_page_directory_table(PD_Table* pd_table)
 	}
 
 	// Cleanup the actual page directory
+#ifdef DEBUG_PAGING
 	kprintf("Cleaning page directory table: 0x%x\n", pd_table);
+#endif
 	phys_free_4KIB(VIRT_TO_PHYS(pd_table));
 }
+
+//=============================================================================
+//
+//=============================================================================
 
 static void cleanup_page_directory_pointer_table(PDP_Table* pdp_table)
 {
@@ -296,9 +340,15 @@ static void cleanup_page_directory_pointer_table(PDP_Table* pdp_table)
 	}
 
 	// Cleanup the actual page directory pointer table
+#ifdef DEBUG_PAGING
 	kprintf("Cleaning page directory pointer table: 0x%x\n", pdp_table);
+#endif
 	phys_free_4KIB(VIRT_TO_PHYS(pdp_table));
 }
+
+//=============================================================================
+//
+//=============================================================================
 
 void virt_cleanup_table(void* _table)
 {
@@ -315,6 +365,10 @@ void virt_cleanup_table(void* _table)
 	// Cleanup the PML4 table
 	phys_free_4KIB(_table);
 }
+
+//=============================================================================
+//
+//=============================================================================
 
 void virt_reset_table(void* table)
 {
@@ -336,27 +390,266 @@ void virt_reset_table(void* table)
 	}
 }
 
-void* virt_clone_mapping(const void* _other)
-{
-	PML4_Table* other = (PML4_Table*) PHYS_TO_VIRT(_other);
-	PML4_Table* new_table = (PML4_Table*) PHYS_TO_VIRT(phys_alloc_4KIB());
+//=============================================================================
+//
+//=============================================================================
 
-	if (new_table == NULL)
+uint8_t virt_lookup_phys(void* table, uint64_t virt_addr, uint64_t* out_phys)
+{
+	// Calculate all of the offsets
+	const uint64_t pml4_index = PML4_INDEX(virt_addr);
+	const uint64_t pdpt_index = PDPT_INDEX(virt_addr);
+	const uint64_t pdt_index  = PDT_INDEX(virt_addr);
+	const uint64_t pt_index   = PT_INDEX(virt_addr);
+
+#ifdef DEBUG_PAGING
+	kprintf("PML4: %u\n", pml4_index);
+	kprintf("PDPT: %u\n", pdpt_index);
+	kprintf("PDT : %u\n", pdt_index);
+	kprintf("PT  : %u\n", pt_index);
+	kprintf("Virt: 0x%x\n", virt_addr);
+#endif
+
+	PML4_Table* pml4_table = (PML4_Table*) PHYS_TO_VIRT(table);
+
+	const uint64_t pml4_entry = pml4_table->entries[pml4_index];
+	if ((pml4_entry & PML4_PRESENT) > 0)
 	{
-		return NULL;
+#ifdef DEBUG_PAGING
+		kprintf("PML4: 0x%x\n", pml4_entry);
+#endif
+		PDP_Table* pdp_table = PHYS_TO_VIRT(PML4E_TO_PDPT(pml4_entry));
+		const uint64_t pdpt_entry = pdp_table->entries[pdpt_index];
+
+		if ((pdpt_entry & PDPT_PRESENT) > 0)
+		{
+#ifdef DEBUG_PAGING
+			kprintf("PDPT: 0x%x\n", pdpt_entry);
+#endif
+			PD_Table* pd_table = PHYS_TO_VIRT(PDPTE_TO_PDT(pdpt_entry));
+			const uint64_t pdt_entry = pd_table->entries[pdt_index];
+
+			if ((pdt_entry & PDT_PRESENT) > 0)
+			{
+#ifdef DEBUG_PAGING
+				kprintf("PDT: 0x%x\n", pdt_entry);
+#endif
+				uint64_t out_address = 0;
+				if ((pdt_entry & PDT_PAGE_SIZE) > 0)
+				{
+#ifdef DEBUG_PAGING
+					kprintf("PAGE_LARGE\n");
+#endif
+					out_address =
+						ENTRY_TO_ADDR(pdt_entry) + (virt_addr & 0xFFF);
+				}
+				else
+				{
+					P_Table* p_table = PHYS_TO_VIRT(PDTE_TO_PT(pdt_entry));
+					const uint64_t pt_entry = p_table->entries[pt_index];
+				
+					if ((pt_entry & PT_PRESENT) > 0)
+					{
+#ifdef DEBUG_PAGING
+						kprintf("PT: 0x%x - 0x%x \n", pt_entry, ENTRY_TO_ADDR(pt_entry));
+#endif
+						out_address =
+							ENTRY_TO_ADDR(pt_entry) + (virt_addr & 0xFFF);
+#ifdef DEBUG_PAGING
+						kprintf("OUT ADDRESS: 0x%x\n", out_address);
+#endif
+					}
+				}
+
+				*out_phys = out_address;
+				return 1;
+			}
+		}
 	}
 
-	memset(new_table, 0, sizeof(PML4_Table));
-	/*for (uint64_t pml4_index = 0; pml4_index < 256; ++pml4_index)
+	// No mapping found
+	return 0;
+}
+
+//=============================================================================
+//
+//=============================================================================
+
+static uint64_t clone_page_table(P_Table* p_table)
+{
+	const char* error = "clone_page_table: No memory";
+	const char* error2 = "clone_page_table: No memory (loop)";
+	P_Table* new_table = (P_Table*) PHYS_TO_VIRT(phys_alloc_4KIB_safe(error));
+
+	for (uint32_t i = 0; i < 512; ++i)
 	{
-		// Set the entries equal, except clear the writable flag
-		// and set the copy-on-write bit. The COW has not been fully
-		// thought out, so it will most likely change quite a bit.
-		const uint64_t entry = other->entries[pml4_index];
-		new_table->entries[pml4_index] = (entry & ~(0x2)) | COW_BITS;
+		const uint64_t entry = p_table->entries[i];
+		if ((entry & PT_PRESENT) > 0)
+		{
+			void* dst = PHYS_TO_VIRT(phys_alloc_4KIB_safe(error2));
+			void* src = PHYS_TO_VIRT(ENTRY_TO_ADDR(entry));
+
+			memcpy(dst, src, PAGE_SMALL_SIZE);
+
+			new_table->entries[i] = (uint64_t)VIRT_TO_PHYS(dst) | (entry & PAGE_COPY_FLAGS);
+		}
+		else
+		{
+			new_table->entries[i] = 0;
+		}
+	}
+
+	uint64_t retVal = (uint64_t) VIRT_TO_PHYS(new_table);
+	retVal |= (uint64_t)VIRT_TO_PHYS(p_table) & PAGE_COPY_FLAGS;
+	return retVal;
+}
+
+//=============================================================================
+//
+//=============================================================================
+
+static uint64_t clone_page_directory(PD_Table* pd_table)
+{
+	const char* error = "clone_page_directory: No memory";
+	const char* error_2MIB = "clone_page_directory: Failed to alloc 2MIB";
+	PD_Table* new_table = (PD_Table*) PHYS_TO_VIRT(phys_alloc_4KIB_safe(error));
+
+	for (uint32_t i = 0; i < 512; ++i)
+	{
+		const uint64_t entry = pd_table->entries[i];	
+		if ((entry & PDT_PRESENT) > 0)
+		{
+			if ((entry & PDT_PAGE_SIZE) > 0)
+			{
+				// Allocate a 2MIB piece of ram to copy this to	
+				void* dst = PHYS_TO_VIRT(phys_alloc_2MIB_safe(error_2MIB));
+				void* src = PHYS_TO_VIRT(ENTRY_TO_ADDR(entry));
+
+				memcpy(dst, src, PAGE_LARGE_SIZE);
+
+				new_table->entries[i] = 
+					(uint64_t)VIRT_TO_PHYS(dst) | 
+						(entry & PAGE_COPY_FLAGS) | PDT_PAGE_SIZE;
+			}
+			else
+			{
+				new_table->entries[i] = 
+					clone_page_table(PHYS_TO_VIRT(
+								PDTE_TO_PT(entry)));
+				new_table->entries[i] |= (entry & PAGE_COPY_FLAGS);
+			}
+		}
+		else
+		{
+			new_table->entries[i] = 0;
+		}
+	}
+
+	uint64_t retVal = (uint64_t) VIRT_TO_PHYS(new_table);
+	retVal |= (uint64_t)VIRT_TO_PHYS(pd_table) & PAGE_COPY_FLAGS;
+	return retVal;
+}
+
+//=============================================================================
+//
+//=============================================================================
+
+static uint64_t clone_page_directory_pointer(PDP_Table* pdp_table)
+{
+	const char* error = "clone_page_directory_pointer: No memory";
+	PDP_Table* new_table = (PDP_Table*) PHYS_TO_VIRT(phys_alloc_4KIB_safe(error));
+
+	for (uint32_t i = 0; i < 512; ++i)
+	{
+		const uint64_t entry = pdp_table->entries[i];
+		if ((entry & PDPT_PRESENT) > 0)
+		{
+			new_table->entries[i] =
+				clone_page_directory(PHYS_TO_VIRT(
+							PDPTE_TO_PDT(entry)));
+			new_table->entries[i] |= (entry & PAGE_COPY_FLAGS);
+		}
+		else
+		{
+			new_table->entries[i] = 0;
+		}
+	}
+
+	uint64_t retVal = (uint64_t)VIRT_TO_PHYS(new_table);
+
+	// Copy the flags
+	retVal |= (uint64_t)VIRT_TO_PHYS(pdp_table) & PAGE_COPY_FLAGS;
+
+	return retVal;
+}
+
+//=============================================================================
+//
+//=============================================================================
+
+void* virt_clone_mapping(void* _other)
+{
+#ifdef DEBUG_PAGING
+	kprintf("Clone mapping\n");
+#endif
+	PML4_Table* other = (PML4_Table*) PHYS_TO_VIRT(_other);	
+
+	const char* error = "virt_clone_mapping: No memory";
+	PML4_Table* new_table = (PML4_Table*) PHYS_TO_VIRT(phys_alloc_4KIB_safe(error));
+	// TODO - don't need
+	memset(new_table, 0, sizeof(PML4_Table));
+
+	// Only do COW for the user pages. Kernel pages are shared no matter what
+/*	for (uint32_t i = 0; i < 256; ++i)
+	{
+		const uint64_t o_entry = other->entries[i];
+		if ((o_entry & PML4_PRESENT) > 0)
+		{
+			// We need to turn this into a COW page	
+			uint64_t cow_entry = PAGE_SET_REF(o_entry | PAGE_COW, 1);
+			// Store if the page was originally writable
+			if ((cow_entry & PML4_WRITABLE) > 0)
+			{
+				cow_entry |= PAGE_COW_WR;
+			}
+			// We set the page to read-only so we get a fault if one of
+			// the processes tries to access the page. We can then create
+			// a copy of that page if it was originally writable. If not,
+			// then we can issue some kind of protection violation and 
+			// kill the offending process.
+			cow_entry &= ~PML4_WRITABLE;
+
+			// Both tables get the same value
+			other->entries[i] = cow_entry;
+			new_table->entries[i] = cow_entry;
+		}
 	}
 	*/
+	// We'll implement COW later
+	for (uint32_t i = 0; i < 256; ++i)
+	{
+		const uint64_t entry = other->entries[i];	
+		if ((entry & PML4_PRESENT) > 0)
+		{
+#ifdef DEBUG_PAGING
+			kprintf("Clone present: 0x%x %u\n", entry, i);
+#endif
+			new_table->entries[i] =
+				clone_page_directory_pointer(PHYS_TO_VIRT(
+						PML4E_TO_PDPT(entry)));	
+			new_table->entries[i] |= (entry & PAGE_COPY_FLAGS);
+#ifdef DEBUG_PAGING
+			kprintf("Clone entry: 0x%x\n", new_table->entries[i]);
+			kprintf("Old present: 0x%x\n", other->entries[i]);
+#endif
+		}
+		else
+		{
+			new_table->entries[i] = 0;
+		}
+	}
 
+	// Copy, but don't modify the kernel's pages
 	for (uint64_t pml4_index = 256; pml4_index < 512; ++pml4_index)
 	{
 		new_table->entries[pml4_index] = other->entries[pml4_index];
@@ -364,3 +657,7 @@ void* virt_clone_mapping(const void* _other)
 
 	return VIRT_TO_PHYS(new_table);
 }
+
+//=============================================================================
+//
+//=============================================================================

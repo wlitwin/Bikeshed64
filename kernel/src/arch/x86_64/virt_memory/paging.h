@@ -37,8 +37,10 @@
 #define PML4_PRESENT 0x1
 #define PML4_WRITABLE 0x2
 
+#define PG_SAFE_FLAGS (PG_FLAG_RW | PG_FLAG_USER | PG_FLAG_PWT | PG_FLAG_PCD | PG_FLAG_XD)
+
 static inline
-void write_cr3(void* page_table)
+void virt_switch_page_table(void* page_table)
 {
 	__asm__ volatile("movq %%rax, %%cr3" : : "a"((uint64_t)page_table));
 }
@@ -122,6 +124,23 @@ void virt_cleanup_table(void* table);
  */
 void virt_reset_table(void* table);
 
+/* Given a page structure, what a virtual address is mapped to.
+ *
+ * Parameters:
+ *    table - The page table to lookup the virt->phys mapping in
+ *    virt_addr - The virtual address to find the mapping for
+ *    out_phys - The physical address that address is mapped to
+ *
+ * NOTE: It returns the physical address. If this address needs to be written
+ *       to it must be converted to the kernel's identity mapped region first.
+ *
+ * Returns:
+ *    1 if the lookup was successful, 0 if no mapping exists. The out_phys 
+ *    parameter is only modified if this function returns 1. It will contain
+ *    the physical address that the virt_addr maps to.
+ */
+uint8_t virt_lookup_phys(void* table, uint64_t virt_addr, uint64_t* out_phys);
+
 /* Clones a PML4 mapping. This does a copy-on-write clone. So
  * only the entry values are copied, but not the pages that are
  * pointed to by the entries. Once an entry is written to then
@@ -134,6 +153,6 @@ void virt_reset_table(void* table);
  *    A new PML4 table that has the same mappings as the given one,
  *    or NULL if space for a new PML4 table could not be allocated.
  */
-void* virt_clone_mapping(const void* other);
+void* virt_clone_mapping(void* other);
 
 #endif
