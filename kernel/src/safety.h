@@ -9,8 +9,8 @@
 
 // http://stackoverflow.com/questions/5641427/how-to-make-preprocessor-generate-a-string-for-line-keyword
 #define S(X) #X
-#define S_(X) S(X)
-#define S__LINE__ S_(__LINE__)
+#define SX(X) S(X)
+#define S__LINE__ SX(__LINE__)
 
 #define UNUSED(X) ((void)X)
 
