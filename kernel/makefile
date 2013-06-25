@@ -17,7 +17,8 @@ CFLAGS=-m64 \
 	   -fno-builtin \
 	   -std=c99 \
 	   -Isrc/ \
-	   -DBIKESHED_X86_64
+	   -DBIKESHED_X86_64 \
+
 
 AS=as
 AS_FLAGS=--64 -am
@@ -32,7 +33,7 @@ OBJ_DIR=obj
 # Filled in by debug rule
 DBG=
 
-KERNEL_OBJECTS=$(shell find src/ -name '*.[cs]' | sed -e 's/^\(.*\.[cs]\)$$/obj\/\1.o/g')
+KERNEL_OBJECTS=$(shell find src/ -name '*.[csS]' | sed -e 's/^\(.*\.[csS]\)$$/obj\/\1.o/g')
 PRE_KERNEL = $(OBJ_DIR)/src/arch/x86_64/prekernel.s.o
 
 all: kernel 
@@ -47,6 +48,11 @@ $(OBJ_DIR)/%.c.o : %.c
 	@echo " - Compiling" $^
 	@mkdir -p $(shell dirname $@)
 	@$(CC) $(DBG) $(CFLAGS) -c $^ -o $@
+
+$(OBJ_DIR)/%.S.o : %.S
+	@echo " - Assembling" $^
+	@mkdir -p $(shell dirname $@)
+	@$(CC) $(CFLAGS) -c $^ -o $@
 
 $(OBJ_DIR)/%.s.o : %.s
 	@echo " - Assembling" $^
