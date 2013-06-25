@@ -2,6 +2,8 @@
  * conform to the same signature.
  */
 
+#include "arch/x86_64/virt_memory/defines.h"
+
 .text
 .code64
 .align 16
@@ -14,6 +16,7 @@
  */
 .macro ISR_STUB int_num=0
 	isr_\int_num:
+	cli
 	.if \int_num == 8
 	.elseif \int_num == 10
 	.elseif \int_num == 11
@@ -65,6 +68,9 @@ isr_save:
 	movq	120(%rsp), %rax
 	movq	128(%rsp), %rbx
 
+	/* Change over to the kernel's stack */
+	movabs	$KERNEL_STACK_LOCATION, %rsp
+
 	/* Pass them as arguments to the handler
 	 * x86_64 calling convention on linux uses
 	 * some registers for the arguments
@@ -104,7 +110,17 @@ isr_restore:
 	/* Pop the vector and error code pushed by the ISR stub */
 	addq	$16, %rsp
 
+/*
+	movabs current_pcb, %rax
+	cmpq $0xFFFFFFFFFFDF8020, %rax
+	jne ret_it
+	hlt
+ret_it:
+*/
+
 	iretq
+
+.data
 
 /* GAS macros aren't very friendly. Couldn't find any documentation that would have made
  * this easier to do. Also the very shallow limit on nested macros is annoying
@@ -113,7 +129,6 @@ isr_restore:
 	ISR_STUB \isr_num
 .endr
 
-.data
 .align 8
 .globl isr_stub_table
 isr_stub_table:
