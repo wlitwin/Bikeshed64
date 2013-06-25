@@ -9,6 +9,12 @@ void schedule(PCB* pcb);
 
 void create_init_process(void);
 
+void cleanup_pcb(PCB* pcb);
+
+PCB* alloc_pcb(void);
+
+void free_pcb(PCB* pcb);
+
 void dispatch(void);
 
 #endif
