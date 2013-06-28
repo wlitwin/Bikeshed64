@@ -25,7 +25,7 @@ void queue_enqueue(Queue* q, QueueNode* node)
 }
 
 void queue_enqueue_prio(Queue* queue, QueueNode* node, 
-		uint8_t cmp(const void* d1, const void* d2))
+		int8_t cmp(const void* d1, const void* d2))
 {
 	if (queue->size == 0)
 	{

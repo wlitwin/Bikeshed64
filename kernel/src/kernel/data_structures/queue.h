@@ -47,7 +47,7 @@ void queue_enqueue(Queue* queue, QueueNode* node);
  *          return -1 if d1 < d2, 0 if d1 == d2, and 1 if d1 > d2
  */
 void queue_enqueue_prio(Queue* queue, QueueNode* node, 
-		uint8_t cmp(const void* d1, const void* d2));
+		int8_t cmp(const void* d1, const void* d2));
 
 /* Take an item off the front of the queue. Returns NULL if there
  * are no more items in the queue.
@@ -80,5 +80,16 @@ uint8_t queue_empty(const Queue* queue);
  *    The size of the Queue
  */
 uint64_t queue_size(const Queue* queue);
+
+static inline
+QueueNode* queue_peek(Queue* queue)
+{
+	if (queue->size == 0)
+	{
+		return NULL;
+	}
+
+	return queue->head;
+}
 
 #endif
