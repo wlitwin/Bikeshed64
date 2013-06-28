@@ -5,16 +5,17 @@ CFLAGS=-m64 \
 	   -ffreestanding \
 	   -nostdlib \
 	   -mno-red-zone \
+	   -mno-3dnow \
 	   -mno-mmx \
 	   -mno-sse \
 	   -mno-sse2 \
 	   -mno-sse3 \
-	   -mno-3dnow \
 	   -Wall \
 	   -Wextra \
 	   -Wformat \
 	   -pedantic \
 	   -fno-builtin \
+	   -march=native \
 	   -std=c99 \
 	   -Isrc/ \
 	   -DBIKESHED_X86_64 \
@@ -47,12 +48,12 @@ clean:
 $(OBJ_DIR)/%.c.o : %.c
 	@echo " - Compiling" $^
 	@mkdir -p $(shell dirname $@)
-	@$(CC) $(DBG) $(CFLAGS) -c $^ -o $@
+	@$(CC) $(DBG) $(CFLAGS) $(QEMU) -c $^ -o $@
 
 $(OBJ_DIR)/%.S.o : %.S
 	@echo " - Assembling" $^
 	@mkdir -p $(shell dirname $@)
-	@$(CC) $(CFLAGS) -c $^ -o $@
+	@$(CC) $(CFLAGS) $(QEMU) -c $^ -o $@
 
 $(OBJ_DIR)/%.s.o : %.s
 	@echo " - Assembling" $^
