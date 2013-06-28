@@ -24,7 +24,9 @@ void kprintf(const char* format, ...)
 
 static void write_char(char c)
 {
+#ifdef QEMU
 	serial_char(c);
+#endif
 	text_mode_char(c);
 }
 
