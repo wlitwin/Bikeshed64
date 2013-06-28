@@ -12,11 +12,11 @@ CFLAGS=-m64 \
 	   -Wall \
 	   -Wextra \
 	   -Wformat \
-	   -pedantic \
 	   -fno-builtin \
-	   -std=c99 \
+	   -std=gnu99 \
 	   -DBIKESHED_X86_64 \
 	   -I../kernel/src/
+	   #-pedantic 
 
 LD=ld
 LD_FLAGS=-m elf_x86_64 -Tlinker.ld -z max-page-size=4096
