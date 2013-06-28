@@ -126,12 +126,12 @@ ELF_Error elf_create_process(PCB* pcb, void* elf_file, void* page_table)
 						(void*)(elf_address + load_offset), copy_amount);
 
 				// Clear the remaining space
-				memset(PHYS_TO_VIRT(memory_address+copy_amount), 0, page_size-copy_amount);
+				memclr(PHYS_TO_VIRT(memory_address+copy_amount), page_size-copy_amount);
 				amount_left -= copy_amount;
 			}
 			else
 			{
-				memset(PHYS_TO_VIRT(memory_address), 0, page_size);
+				memclr(PHYS_TO_VIRT(memory_address), page_size);
 			}
 
 			load_offset += copy_amount;
@@ -156,7 +156,7 @@ ELF_Error elf_create_process(PCB* pcb, void* elf_file, void* page_table)
 			panic("ELF: Failed to allocate stack");
 		}
 
-		memset(PHYS_TO_VIRT(memory_address), 0, PAGE_SMALL_SIZE);
+		memclr(PHYS_TO_VIRT(memory_address), PAGE_SMALL_SIZE);
 		address += PAGE_SMALL_SIZE;
 	}
 

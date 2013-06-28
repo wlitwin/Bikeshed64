@@ -236,7 +236,7 @@ void create_paging_structures(const page_struct_info* psi)
 		--pds_left;
 
 		// Clear this entry
-		memset(pd_table, 0, sizeof(PD_Table));
+		memclr(pd_table, sizeof(PD_Table));
 
 		pdp_table->entries[pdpt_index] = (uint64_t)pd_table | PDPT_WRITABLE | PDPT_PRESENT;
 		invlpg(pd_table);
@@ -270,7 +270,7 @@ void create_paging_structures(const page_struct_info* psi)
 		--pdpts_left;
 
 		// Clear the PDP Table
-		memset(pdp_table, 0, sizeof(PDP_Table));
+		memclr(pdp_table, sizeof(PDP_Table));
 
 		pml4_table->entries[pml4_index] = (uint64_t)pdp_table | PML4_WRITABLE | PML4_PRESENT;	
 		// TODO replicate this mapping at the kernel's address space
@@ -291,7 +291,7 @@ void create_paging_structures(const page_struct_info* psi)
 			--pds_left;
 
 			// Clear the PD Table
-			memset(pd_table, 0, sizeof(PD_Table));
+			memclr(pd_table, sizeof(PD_Table));
 
 			pdp_table->entries[i] = (uint64_t)pd_table | PDPT_WRITABLE | PDPT_PRESENT;
 			

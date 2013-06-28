@@ -3,7 +3,7 @@
 #include "phys_alloc.h"
 #include "imports.h"
 
-#include "kernel/klib.h" // memset
+#include "kernel/klib.h" // memclr
 
 #include "arch/x86_64/panic.h"
 #include "arch/x86_64/serial.h"
@@ -49,8 +49,10 @@ void virt_memory_init()
 {
 	kernel_table = (void*) &kernel_PML4;	
 
+#ifdef QEMU
 	/* XXX - Temporarily here for debugging */
 	init_serial_debug();	
+#endif
 	init_text_mode();
 	clear_screen();
 
@@ -133,7 +135,7 @@ uint8_t virt_map_phys(void* _table, const uint64_t virt_addr, const uint64_t phy
 			return 0;
 		}
 
-		memset(pdp_table, 0, sizeof(PDP_Table));
+		memclr(pdp_table, sizeof(PDP_Table));
 
 		table->entries[pml4_index] = (uint64_t) VIRT_TO_PHYS(pdp_table) | PML4_WRITABLE | PML4_PRESENT;
 		invlpg(pdp_table);
@@ -148,7 +150,7 @@ uint8_t virt_map_phys(void* _table, const uint64_t virt_addr, const uint64_t phy
 			return 0;
 		}
 
-		memset(pd_table, 0, sizeof(PD_Table));
+		memclr(pd_table, sizeof(PD_Table));
 
 		pdp_table->entries[pdpt_index] = (uint64_t) VIRT_TO_PHYS(pd_table) | PDPT_WRITABLE | PDPT_PRESENT;
 		invlpg(pd_table);
@@ -181,7 +183,7 @@ uint8_t virt_map_phys(void* _table, const uint64_t virt_addr, const uint64_t phy
 				return 0;
 			}
 
-			memset(p_table, 0, sizeof(P_Table));	
+			memclr(p_table, sizeof(P_Table));	
 
 			pd_table->entries[pdt_index] = (uint64_t)VIRT_TO_PHYS(p_table) | PDT_WRITABLE | PDT_PRESENT;
 			invlpg(p_table);
@@ -597,7 +599,7 @@ void* virt_clone_mapping(void* _other)
 	const char* error = "virt_clone_mapping: No memory";
 	PML4_Table* new_table = (PML4_Table*) PHYS_TO_VIRT(phys_alloc_4KIB_safe(error));
 	// TODO - don't need
-	memset(new_table, 0, sizeof(PML4_Table));
+	memclr(new_table, sizeof(PML4_Table));
 
 	// Only do COW for the user pages. Kernel pages are shared no matter what
 /*	for (uint32_t i = 0; i < 256; ++i)

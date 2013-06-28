@@ -1,6 +1,6 @@
 #include "tss.h"
 
-#include "kernel/klib.h" // memset
+#include "kernel/klib.h" // memclr
 #include "arch/x86_64/virt_memory/physical.h"
 
 typedef struct
@@ -59,7 +59,7 @@ void setup_tss_descriptor()
 	tss->base4 = (tss_base & 0xFFFFFFFF00000000) >> 32;
 	tss->reserved = 0;
 
-	memset(&kernel_TSS, 0, sizeof(kernel_TSS));
+	memclr(&kernel_TSS, sizeof(kernel_TSS));
 	kernel_TSS.io_map_base = 104;
 	kernel_TSS.rsp[0] = 0x80000;
 	kernel_TSS.ist[0] = 0x81000;
