@@ -1,6 +1,7 @@
 #include "syscalls.h"
 #include "inttypes.h"
 #include "types.h"
+#include "kernel/timer/defs.h"
 #include "kernel/scheduler/pcb.h"
 #include "kernel/virt_memory/defs.h"
 #include "kernel/scheduler/scheduler.h"
@@ -61,7 +62,7 @@ void fork(PCB* pcb)
 	Context* new_context = (Context*)PHYS_TO_VIRT(new_context_addr);
 
 	pcb->context->rax = SUCCESS;	
-	*((uint64_t*)pcb->context->rdi) = 0;
+	*((Pid*)pcb->context->rdi) = 0;
 	new_context->rax = SUCCESS;
 
 	uint64_t pid_param_location = 0;
@@ -105,7 +106,16 @@ void exit(PCB* pcb)
 //============================================================================
 void msleep(PCB* pcb)
 {
-	
+	const time_t sleep_time = pcb->context->rdi;
+
+	if (!sleep_pcb(pcb, sleep_time))
+	{
+		pcb->context->rax = FAILURE;
+	}
+	else
+	{
+		pcb->context->rax = SUCCESS;
+	}
 }
 
 void syscalls_init()
@@ -121,6 +131,8 @@ void syscalls_init()
 void syscall_interrupt(uint64_t vector, uint64_t error)
 {
 	UNUSED(error);
+	// Stop the current processes quantum
+	timer_stop();
 	
 #ifdef BIKESHED_X86_64		
 	if (current_pcb == NULL)
@@ -130,8 +142,8 @@ void syscall_interrupt(uint64_t vector, uint64_t error)
 
 	// Check the syscall number and dispatch on it
 	uint64_t syscall_num = current_pcb->context->r10;
-	kprintf("GOT SYSCALL: %u\n", syscall_num);
-	kprintf("PARAM1: 0x%x\n", current_pcb->context->rdi);
+//	kprintf("GOT SYSCALL: %u\n", syscall_num);
+//	kprintf("PARAM1: 0x%x\n", current_pcb->context->rdi);
 
 	if (syscall_num >= NUM_SYSCALLS)
 	{
@@ -142,7 +154,7 @@ void syscall_interrupt(uint64_t vector, uint64_t error)
 		syscall_functions[syscall_num](current_pcb);
 	}
 
-	kprintf("Returned from syscall\n");
+//	kprintf("Returned from syscall\n");
 #else
 #error "System calls are not implemented for this architecture"
 #endif
