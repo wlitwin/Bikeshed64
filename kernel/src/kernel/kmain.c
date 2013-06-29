@@ -22,7 +22,7 @@ void kmain(void)
 	scheduler_init();
 
 	/* Initialize the timer */
-	timer_init();
+//	timer_init();
 
 	/* Initialize the system calls */
 	syscalls_init();
