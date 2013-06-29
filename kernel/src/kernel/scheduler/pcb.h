@@ -2,6 +2,7 @@
 #define __SCHEDULER_PCB_H__
 
 #include "inttypes.h"
+#include "kernel/timer/defs.h"
 
 #ifdef BIKESHED_X86_64
 #include "arch/x86_64/interrupts/imports.h"
@@ -14,6 +15,7 @@ typedef enum
 {
 	READY = 0,
 	RUNNING,
+	SLEEPING,
 	KILLED,
 } State;
 
@@ -22,6 +24,7 @@ typedef struct
 	// 8 byte fields
 	Context* context;
 	void* page_table;
+	time_t sleep_time;
 
 	// 2 byte fields
 	Pid pid;
