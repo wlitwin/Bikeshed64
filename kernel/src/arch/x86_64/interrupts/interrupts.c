@@ -37,9 +37,9 @@ COMPILE_ASSERT(sizeof(IDT_Gate) == 16);
 extern IDT_Gate start_idt_64[256];
 IDT_Gate* idt;
 
-typedef void (*interrupt_handler)(void);
-
 void (*isr_table[256])(uint64_t vector, uint64_t code);
+
+typedef void (*interrupt_handler)(void);
 
 static void set_idt_entry(uint64_t index, interrupt_handler fn_ih)
 {
@@ -119,34 +119,15 @@ static void serial_handler(uint64_t vector, uint64_t code)
 	UNUSED(code);
 }
 
+static void spurious_handler(uint64_t vector, uint64_t code)
+{
+	UNUSED(vector);
+	UNUSED(code);
+}
+
 void interrupts_install_isr(uint64_t index, void handler(uint64_t, uint64_t))
 {
 	isr_table[index] = handler;
-}
-
-static void pic_init()
-{
-	// ICW1
-	_outb(PIC_MASTER_CMD_PORT, PIC_ICW1BASE | PIC_NEEDICW4);		
-	_outb(PIC_SLAVE_CMD_PORT, PIC_ICW1BASE | PIC_NEEDICW4);
-
-	// ICW2
-	// Master offset to 32
-	// Slave offset to 40
-	_outb(PIC_MASTER_IMR_PORT, 0x20);
-	_outb(PIC_SLAVE_IMR_PORT, 0x28);
-
-	// ICW3
-	_outb(PIC_MASTER_IMR_PORT, PIC_MASTER_SLAVE_LINE);
-	_outb(PIC_SLAVE_IMR_PORT, PIC_SLAVE_ID);
-
-	// ICW4
-	_outb(PIC_MASTER_IMR_PORT, PIC_86MODE);
-	_outb(PIC_SLAVE_IMR_PORT, PIC_86MODE);
-
-	// OCW1 Allow interrupts on all lines
-	_outb(PIC_MASTER_IMR_PORT, 0x0);
-	_outb(PIC_SLAVE_IMR_PORT, 0x0);
 }
 
 void interrupts_init()
@@ -164,14 +145,9 @@ void interrupts_init()
 	}
 
 	interrupts_install_isr(36, serial_handler);
+	interrupts_install_isr(39, spurious_handler);
 
-	// Initialize the APIC so interrupts from it don't
-	// come to the exception interrupt vectors. Currently
-	// just disables the APIC.
+	// Initialize the APIC
 	apic_init();
-
-	// For now we'll use the old PIC
-	pic_init();	
 }
-
 
