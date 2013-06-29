@@ -47,11 +47,18 @@ void queue_enqueue_prio(Queue* queue, QueueNode* node,
 			queue->tail->next = node;
 			queue->tail = node;
 		}
+		else if (other == queue->head)
+		{
+			node->next = queue->head;
+			queue->head = node;
+		}
 		else
 		{
 			node->next = other->next;
 			other->next = node;
 		}
+
+		++queue->size;
 	}
 }
 
