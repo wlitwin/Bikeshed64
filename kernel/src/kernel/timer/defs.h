@@ -2,13 +2,21 @@
 #define __KERNEL_TIMER_TIMER_H__
 
 #ifdef BIKESHED_X86_64
-#include "arch/x86_64/timer.h"
+#include "arch/x86_64/interrupts/apic.h"
 #endif
 
-extern void timer_init(void);
+void timer_set_delay(uint32_t delay);
 
-extern void timer_one_shot(void);
+uint32_t timer_get_count(void);
 
-extern void timer_set_delay(const uint64_t delay);
+uint32_t timer_one_ms(void);
+
+uint32_t timer_get_elapsed(void);
+
+void timer_resume(void);
+
+void timer_start(void);
+
+void timer_stop(void);
 
 #endif
