@@ -100,7 +100,6 @@ static void default_handler(uint64_t vector, uint64_t code)
 
 	if (vector == 14)
 	{
-
 		panic("Page Fault");
 	}
 

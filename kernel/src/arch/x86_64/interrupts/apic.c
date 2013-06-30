@@ -7,6 +7,10 @@
 #include "arch/x86_64/panic.h"
 #include "arch/x86_64/kprintf.h"
 
+#ifndef DEBUG_APIC
+#define kprintf(...)
+#endif
+
 #define TIMER_FREQ 1193182 /* Megahertz */
 #define CMD_PORT 0x43
 #define CH0_DATA_PORT 0x40
@@ -218,10 +222,12 @@ void apic_init()
 
 	// Now we can access the APIC's registers from APIC_VIRT_LOC
 	volatile uint32_t* apic_regs = (volatile uint32_t*)APIC_VIRT_LOC;
+#ifdef DEBUG_APIC
 	const uint32_t apic_version = apic_regs[APIC_VER_REG];
 	kprintf("APIC VER: 0x%x \n", apic_version);
 	const uint32_t max_lvt_entries = ((apic_version >> 16) & 0xFF) + 1;
 	kprintf("APIC MAX LVTs: %u \n", max_lvt_entries);
+#endif
 	// Setup the APIC LVTs
 	kprintf("TIMER VEC: 0x%x \n", apic_regs[APIC_TIMER_REG]);
 
@@ -270,9 +276,11 @@ void apic_init()
 	kprintf("Timer Count: 0x%x\n", count);
 	const uint32_t diff = 0xFFFFFFFF - count;
 	tsc_per_sec = diff*100*128;
+#ifdef DEBUG_APIC
 	const uint32_t tps = tsc_per_sec / 128;
 
 	kprintf("Ticks per sec: %u - %u\n", tps, tsc_per_sec);
+#endif
 
 	// Install the timer interrupt handler
 	interrupts_install_isr(32, timer_handler);	

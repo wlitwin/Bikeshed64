@@ -9,6 +9,10 @@
 #include "arch/x86_64/kprintf.h"
 #include "arch/x86_64/virt_memory/types.h"
 
+#ifndef DEBUG_PHYSICAL
+#define kprintf(...)
+#endif
+
 /* How many physical address bits the processor has
  *
  * Defined in prekernel.s
@@ -57,6 +61,7 @@ void phys_memory_init()
 	get_total_usable_ram(&info);
 
 	kprintf("Modified Memory Map\n");
+#ifdef DEBUG_PHYSICAL
 	const uint32_t mmap_size1 = *((uint32_t*) MMAP_COUNT);
 	MMapEntry* mmap_array1 = (MMapEntry*) MMAP_ADDRESS;
 	for (uint32_t i = 0; i < mmap_size1; ++i)
@@ -67,9 +72,7 @@ void phys_memory_init()
 				mmap_array1[i].length, 
 				mmap_array1[i].type);
 	}
-	
-
-	uint64_t total_usable_ram = info.total_usable_ram; // In Bytes
+#endif
 
 	kprintf("highest address: 0x%x\n", info.highest_address);
 
@@ -91,7 +94,7 @@ void phys_memory_init()
 		--num_pds;
 	}
 
-	kprintf("Total usable RAM: 0x%x\n", total_usable_ram);
+	kprintf("Total usable RAM: 0x%x\n", info.total_usable_ram);
 
 	// PDPTs store 512 pointers to PDs
 	// The +1 is to correct the flooring done by integer division

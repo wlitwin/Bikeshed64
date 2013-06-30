@@ -4,6 +4,10 @@
 #include "kernel/kprintf.h"
 #include "kernel/virt_memory/defs.h"
 
+#ifndef DEBUG_ELF
+#define kprintf(...)
+#endif
+
 #ifdef BIKESHED_X86_64
 #include "arch/x86_64/virt_memory/physical.h"
 #include "arch/x86_64/interrupts/imports.h"
