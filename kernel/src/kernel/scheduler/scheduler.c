@@ -153,12 +153,10 @@ uint8_t schedule(PCB* pcb)
 		case SLEEPING:
 			{
 				QueueNode* node = (QueueNode*)block_alloc(ba_qnodes);
+				ASSERT(node != NULL);
 				node->data = pcb;
 
 				queue_enqueue_prio(&sleep_queue, node, sleep_insert);
-
-				//node = queue_peek(&sleep_queue);
-				//PCB* next = (PCB*)node->data;
 			}
 			break;
 		default:
@@ -171,7 +169,7 @@ uint8_t schedule(PCB* pcb)
 	return 1;
 }
 
-uint8_t sleep_pcb(PCB* pcb, time_t time)
+void sleep_pcb(PCB* pcb, time_t time)
 {
 	if (time != 0)
 	{
@@ -183,8 +181,6 @@ uint8_t sleep_pcb(PCB* pcb, time_t time)
 	}
 
 	dispatch();
-
-	return 1;
 }
 
 // TODO don't go through so many function calls

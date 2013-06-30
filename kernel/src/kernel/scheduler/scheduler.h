@@ -10,7 +10,7 @@ uint8_t schedule(PCB* pcb);
 
 void create_init_process(void);
 
-uint8_t sleep_pcb(PCB* pcb, time_t time);
+void sleep_pcb(PCB* pcb, time_t time);
 
 void cleanup_pcb(PCB* pcb);
 

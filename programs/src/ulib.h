@@ -7,7 +7,7 @@
 
 Status fork(Pid* pid);
 
-Status msleep(time_t ms);
+void msleep(time_t ms);
 
 Status exit(void);
 

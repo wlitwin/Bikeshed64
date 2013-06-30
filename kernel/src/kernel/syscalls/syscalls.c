@@ -73,8 +73,6 @@ void fork(PCB* pcb)
 	Pid* param_pid = (Pid*)PHYS_TO_VIRT(pid_param_location);
 	*param_pid = 1;
 
-	kprintf("RBP: 0x%x\n", pcb->context->rbp);
-
 	// Schedule the new pcb, and call dispatch because the timer may not be running
 	schedule(new_pcb);
 	dispatch();
@@ -108,14 +106,11 @@ void msleep(PCB* pcb)
 {
 	const time_t sleep_time = pcb->context->rdi;
 
-	if (!sleep_pcb(pcb, sleep_time))
-	{
-		pcb->context->rax = FAILURE;
-	}
-	else
-	{
-		pcb->context->rax = SUCCESS;
-	}
+	// NOTE: When you return from this function, the address space may have
+	//       changed and the passed in pcb CANNOT be used unless something
+	//       like the fork() system call is done, where the physical address
+	//       is looked up.
+	sleep_pcb(pcb, sleep_time);
 }
 
 void syscalls_init()

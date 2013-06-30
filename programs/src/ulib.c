@@ -11,21 +11,17 @@ Status fork(Pid* pid)
 	register Status retVal __asm__("rax");
 	
 	__asm__ volatile ("movq $" SX(SYSCALL_FORK) ", %r10");
-	__asm__ volatile ("int $" SX(SYSCALL_INT_VEC));
+	__asm__ volatile ("int $" SX(SYSCALL_INT_VEC) ::: "%rax");
 
 	return retVal;
 }
 
-Status msleep(time_t ms)
+void msleep(time_t ms)
 {
 	UNUSED(ms);
 
-	register Status retVal __asm__("rax");
-
 	__asm__ volatile ("movq $" SX(SYSCALL_MSLEEP) ", %r10");
 	__asm__ volatile ("int $" SX(SYSCALL_INT_VEC));
-
-	return retVal;
 }
 
 Status exit()
@@ -33,7 +29,7 @@ Status exit()
 	register Status retVal __asm__("rax");
 
 	__asm__ volatile ("movq $" SX(SYSCALL_EXIT) ", %r10");
-	__asm__ volatile ("int $" SX(SYSCALL_INT_VEC));
+	__asm__ volatile ("int $" SX(SYSCALL_INT_VEC) ::: "%rax");
 
 	return retVal;
 }
