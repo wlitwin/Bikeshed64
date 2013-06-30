@@ -9,6 +9,6 @@ Status fork(Pid* pid);
 
 void msleep(time_t ms);
 
-Status exit(void);
+void exit(void);
 
 #endif

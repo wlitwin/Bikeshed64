@@ -114,6 +114,8 @@ void cleanup_pcb(PCB* pcb)
 {
 	virt_switch_page_table(kernel_table);	
 
+	virt_cleanup_table(pcb->page_table);
+
 	pcb->state = KILLED;
 }
 

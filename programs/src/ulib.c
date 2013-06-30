@@ -24,12 +24,8 @@ void msleep(time_t ms)
 	__asm__ volatile ("int $" SX(SYSCALL_INT_VEC));
 }
 
-Status exit()
+void exit()
 {
-	register Status retVal __asm__("rax");
-
 	__asm__ volatile ("movq $" SX(SYSCALL_EXIT) ", %r10");
-	__asm__ volatile ("int $" SX(SYSCALL_INT_VEC) ::: "%rax");
-
-	return retVal;
+	__asm__ volatile ("int $" SX(SYSCALL_INT_VEC));
 }
