@@ -1,5 +1,6 @@
 #include "kernel/elf/elf.h"
 #include "kernel/kprintf.h"
+#include "kernel/sound/defs.h"
 #include "kernel/timer/defs.h"
 #include "kernel/alloc/alloc.h"
 #include "kernel/interrupts/defs.h"
@@ -26,6 +27,9 @@ void kmain(void)
 
 	/* Initialize the system calls */
 	syscalls_init();
+
+	/* Initialize the sound driver */
+	sound_init();
 
 	/* Setup the init process */
 	create_init_process();
