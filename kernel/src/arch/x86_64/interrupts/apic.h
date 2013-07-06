@@ -13,6 +13,8 @@ typedef uint32_t time_t;
  */
 void apic_init(void);
 
+void apic_eoi(void);
+
 void timer_set_delay(uint32_t delay);
 
 uint32_t timer_get_count(void);

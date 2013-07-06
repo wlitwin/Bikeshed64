@@ -8,7 +8,7 @@
 #include "arch/x86_64/kprintf.h"
 
 #ifndef DEBUG_APIC
-#define kprintf(...)
+//#define kprintf(...)
 #endif
 
 #define TIMER_FREQ 1193182 /* Megahertz */
@@ -175,6 +175,12 @@ void timer_stop()
 	lapic[APIC_TIMER_INIT_REG] = 0;
 }
 
+void apic_eoi(void)
+{
+	volatile uint32_t* lapic = (volatile uint32_t*)APIC_VIRT_LOC;
+	lapic[APIC_EOI] = 0;
+}
+
 void timer_handler(uint64_t vector, uint64_t code)
 {
 	UNUSED(vector);
@@ -184,8 +190,7 @@ void timer_handler(uint64_t vector, uint64_t code)
 
 	timer_interrupt();
 
-	volatile uint32_t* lapic = (volatile uint32_t*)APIC_VIRT_LOC;
-	lapic[APIC_EOI] = 0;
+	apic_eoi();
 }
 
 void apic_init()
@@ -230,7 +235,6 @@ void apic_init()
 #endif
 	// Setup the APIC LVTs
 	kprintf("TIMER VEC: 0x%x \n", apic_regs[APIC_TIMER_REG]);
-
 
 	// Setup the APIC
 	apic_regs[APIC_TIMER_REG] = APIC_DISABLE;
@@ -282,10 +286,12 @@ void apic_init()
 	kprintf("Ticks per sec: %u - %u\n", tps, tsc_per_sec);
 #endif
 
-	// Install the timer interrupt handler
-	interrupts_install_isr(32, timer_handler);	
-
 	// Disable the PIC
 	_outb(PIC_SLAVE_IMR_PORT, 0xFF);
-	_outb(PIC_MASTER_IMR_PORT, 0xFF);
+	_outb(PIC_MASTER_IMR_PORT, 0xFD); // But keep the keyboard interrupt on
+	// Set the LINT0 line to take external interrupts
+	apic_regs[APIC_LINT0_REG] = 0x8700;	
+	
+	// Install the timer interrupt handler
+	interrupts_install_isr(32, timer_handler);	
 }
