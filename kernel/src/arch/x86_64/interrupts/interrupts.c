@@ -10,6 +10,8 @@
 #include "arch/x86_64/panic.h"
 #include "arch/x86_64/kprintf.h"
 #include "arch/x86_64/virt_memory/physical.h"
+#include "arch/x86_64/virt_memory/paging.h"
+#include "kernel/scheduler/scheduler.h"
 #include "kernel/scheduler/pcb.h"
 
 #define IDT_SEG_PRESENT (0x1 << 15)
@@ -116,12 +118,20 @@ static void serial_handler(uint64_t vector, uint64_t code)
 	// Do nothing
 	UNUSED(vector);
 	UNUSED(code);
+
+	//kprintf("SERIAL\n");
+	//__asm__ volatile("hlt");
+	//pic_acknowledge(vector);
 }
 
 static void spurious_handler(uint64_t vector, uint64_t code)
 {
 	UNUSED(vector);
 	UNUSED(code);
+
+	kprintf("SPURIOUS\n");
+	__asm__ volatile("hlt");
+	//pic_acknowledge(vector);
 }
 
 void interrupts_install_isr(uint64_t index, void handler(uint64_t, uint64_t))
@@ -129,8 +139,17 @@ void interrupts_install_isr(uint64_t index, void handler(uint64_t, uint64_t))
 	isr_table[index] = handler;
 }
 
+// Used as a dummy pcb during kernel initialization
+static PCB init_pcb;
+
 void interrupts_init()
 {
+	// Create a dummy process in case we receive an exception during the rest of kernel
+	// initialization. The interrupts won't work unless we have something in current_pcb
+	memclr(&init_pcb, sizeof(PCB));
+	init_pcb.page_table = kernel_table;	
+	current_pcb = &init_pcb;
+
 	idt = PHYS_TO_VIRT(&start_idt_64[0]);
 
 	setup_tss_descriptor();
