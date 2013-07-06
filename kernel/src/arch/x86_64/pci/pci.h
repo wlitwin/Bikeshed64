@@ -3,12 +3,10 @@
 
 #include "inttypes.h"
 
-#define PCI_CONFIG_SPACE_PORT 0xCF8
-#define PCI_CONFIG_DATA_PORT  0xCFC
-#define ENABLE_PCI_CONFIG_SPACE 0x80000000
-
 #define PCI_VENDOR_ID 0x0
 #define PCI_DEVICE_ID 0x2
+#define PCI_COMMAND 0x4
+#define PCI_STATUS 0x6
 #define PCI_CLASS 0x8
 #define PCI_CACHE_LINE_SIZE 0xC
 #define PCI_LATENCY_TIMER 0xD
@@ -123,6 +121,8 @@ typedef struct PCIConfig
 
 	uint16_t vendor_id;
 	uint16_t device_id;
+	uint16_t status;
+	uint16_t command;
 	uint8_t base_class;
 	uint8_t sub_class;
 	uint8_t programming_if;
@@ -149,15 +149,51 @@ void pci_init(void);
  * function and offset.
  */
 uint32_t pci_config_read_long(uint8_t bus, uint8_t device, uint8_t function, uint8_t offset);
-uint16_t pci_config_read_short(uint8_t bus, uint8_t device, uint8_t function, uint8_t offset);
+uint16_t pci_config_read_word(uint8_t bus, uint8_t device, uint8_t function, uint8_t offset);
 uint8_t  pci_config_read_byte(uint8_t bus, uint8_t device, uint8_t function, uint8_t offset);
+
+static inline
+uint32_t pci_config_read_l(const pci_config_t* config, uint8_t offset)
+{
+	return pci_config_read_long(config->bus, config->slot, config->function, offset);	
+}
+
+static inline
+uint32_t pci_config_read_w(const pci_config_t* config, uint8_t offset)
+{
+	return pci_config_read_word(config->bus, config->slot, config->function, offset);	
+}
+
+static inline
+uint32_t pci_config_read_b(const pci_config_t* config, uint8_t offset)
+{
+	return pci_config_read_byte(config->bus, config->slot, config->function, offset);	
+}
 
 /* The following functions write a 32-bit, 16-bit, or 8-bit value (respectively)
  * from the PCI configuration space on the specified PCI bus, device, function, and offset
  */
 void pci_config_write_long(uint8_t bus, uint8_t device, uint8_t function, uint8_t offset, uint32_t val);
-void pci_config_write_short(uint8_t bus, uint8_t device, uint8_t function, uint8_t offset, uint16_t val);
+void pci_config_write_word(uint8_t bus, uint8_t device, uint8_t function, uint8_t offset, uint16_t val);
 void pci_config_write_byte(uint8_t bus, uint8_t device, uint8_t function, uint8_t offset, uint8_t val);
+
+static inline
+void pci_config_write_l(const pci_config_t* config, uint8_t offset, uint32_t val)
+{
+	pci_config_write_long(config->bus, config->slot, config->function, offset, val);
+}
+
+static inline
+void pci_config_write_w(const pci_config_t* config, uint8_t offset, uint16_t val)
+{
+	pci_config_write_word(config->bus, config->slot, config->function, offset, val);
+}
+
+static inline
+void pci_config_write_b(const pci_config_t* config, uint8_t offset, uint8_t val)
+{
+	pci_config_write_byte(config->bus, config->slot, config->function, offset, val);
+}
 
 /* Search all the PCI devices found for a specific class or PCI device
  *
@@ -186,6 +222,6 @@ void pci_dump_all_devices(void);
 
 /* Dump a specific PCI device to serial output
  */
-void pci_dump_device(uint8_t bus, uint8_t slot, uint8_t function);
+void pci_dump_device(const pci_config_t* config);
 
 #endif
