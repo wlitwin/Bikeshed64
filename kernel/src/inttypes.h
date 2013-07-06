@@ -5,6 +5,8 @@
 
 #define NULL ((void*)0)
 
+#define ALIGN(ADDR,P2) ((ADDR+P2-1) & ~(P2 - 1))
+
 typedef unsigned long uint64_t;
 COMPILE_ASSERT(sizeof(uint64_t) == 8);
 
