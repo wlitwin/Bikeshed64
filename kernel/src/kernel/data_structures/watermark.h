@@ -19,6 +19,8 @@ typedef struct
 {
 	uint64_t page_address;
 	uint64_t current_address;	
+	uint64_t current_size;
+	uint64_t max_size;
 } WaterMarkAllocator;
 
 /* Initialize the watermark object. Doesn't do much.
@@ -29,7 +31,7 @@ typedef struct
  *    wma - The WaterMarkAllocator to initialize
  *    location - The maximum address of the allocator
  */
-void water_mark_init(WaterMarkAllocator* wma, const void* location);
+void water_mark_init(WaterMarkAllocator* wma, const void* location, const uint64_t max_size);
 
 /* Allocates a region of memory.
  *
@@ -42,5 +44,18 @@ void water_mark_init(WaterMarkAllocator* wma, const void* location);
  *    something went wrong
  */
 void* water_mark_alloc(WaterMarkAllocator* wma, const uint64_t size);
+
+/* Allocates a region of memory aligned to a boundary.
+ *
+ * Parameters:
+ *    wma - The WaterMarkAllocator to allocate from
+ *    alignment - The byte boundary to align the memory to
+ *    size - How many bytes to allocate
+ *
+ * Returns:
+ *    A Pointer to the allocated memory, or NULL if 
+ *    something went wrong
+ */
+void* water_mark_alloc_align(WaterMarkAllocator* wma, const uint64_t alignment, const uint64_t size);
 
 #endif
