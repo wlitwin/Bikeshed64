@@ -5,6 +5,12 @@ void init_text_mode(void);
 
 void text_mode_char(char c);
 
-void clear_screen();
+void page_up(void);
+
+void page_down(void);
+
+void clear_screen(void);
+
+void text_mode_reset(void);
 
 #endif
