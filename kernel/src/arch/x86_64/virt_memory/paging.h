@@ -86,6 +86,9 @@ void virt_memory_init(void);
 uint8_t virt_map_phys(void* table, const uint64_t virt_addr, const uint64_t phys_addr,
 						const uint64_t flags, const uint64_t page_size);
 
+uint8_t virt_map_phys_range(void* table, const uint64_t virt_addr, const uint64_t phys_addr,
+						const uint64_t flags, const uint64_t page_size, const uint64_t num_pages);
+
 /* Similar to virt_map_phys, except it allocates a free physical piece of
  * memory to use for the virtual mapping.
  *

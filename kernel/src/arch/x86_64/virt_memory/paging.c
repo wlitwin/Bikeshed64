@@ -101,6 +101,33 @@ uint8_t virt_map_page(void* _table, const uint64_t virt_addr,
 
 	return virt_map_phys(_table, virt_addr, addr, flags, page_size);
 }
+//=============================================================================
+//
+//=============================================================================
+
+uint8_t virt_map_phys_range(void* table, const uint64_t virt_addr, const uint64_t phys_addr,
+						const uint64_t flags, const uint64_t page_size, const uint64_t num_pages)
+{
+	ASSERT(page_size == PAGE_LARGE || page_size == PAGE_SMALL);
+
+	uint64_t cur_virt = virt_addr;
+	uint64_t cur_phys = phys_addr;
+	const uint64_t addr_inc = page_size == PAGE_LARGE ? PAGE_LARGE_SIZE : PAGE_SMALL_SIZE;
+
+	for (uint64_t i = 0; i < num_pages; ++i)
+	{
+		const uint8_t retVal = virt_map_phys(table, cur_virt, cur_phys, flags, page_size);
+		if (!retVal) 
+		{
+			return retVal;
+		}
+
+		cur_virt += addr_inc;
+		cur_phys += addr_inc;
+	}
+
+	return 0;
+}
 
 //=============================================================================
 //
