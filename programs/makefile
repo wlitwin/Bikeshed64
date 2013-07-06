@@ -1,5 +1,6 @@
 CC=gcc
 CFLAGS=-m64 \
+	   -g \
 	   -mcmodel=large \
 	   -ffreestanding \
 	   -nostdlib \
@@ -13,7 +14,7 @@ CFLAGS=-m64 \
 	   -Wextra \
 	   -Wformat \
 	   -fno-builtin \
-	   -std=gnu99 \
+	   -std=c99 \
 	   -DBIKESHED_X86_64 \
 	   -I../kernel/src/
 	   #-pedantic 
