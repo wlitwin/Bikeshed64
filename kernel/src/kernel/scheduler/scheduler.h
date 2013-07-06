@@ -4,6 +4,8 @@
 #include "pcb.h"
 #include "kernel/timer/defs.h"
 
+extern PCB* current_pcb;
+
 void scheduler_init(void);
 
 uint8_t schedule(PCB* pcb);

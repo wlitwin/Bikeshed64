@@ -1,5 +1,6 @@
 #include "scheduler.h"
 
+#include "kernel/klib.h"
 #include "kernel/panic.h"
 #include "kernel/elf/elf.h"
 #include "kernel/kprintf.h"
