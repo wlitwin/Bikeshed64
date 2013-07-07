@@ -33,6 +33,10 @@
 #define PAGE_COW_INC(PG) PAGE_SET_REF(PG,(PAGE_GET_REF(PG))+1)
 #define PAGE_COW_DEC(PG) PAGE_SET_REF(PG,(PAGE_GET_REF(PG))-1)
 
+#ifndef DEBUG_VIRT_MEM
+#define kprintf(...)
+#endif
+
 /* How many virtual address bits the processor has
  *
  * Defined in prekernel.s
@@ -143,12 +147,10 @@ uint8_t virt_map_phys(void* _table, const uint64_t virt_addr, const uint64_t phy
 	const uint64_t pdt_index  = PDT_INDEX(virt_addr);
 	const uint64_t pt_index   = PT_INDEX(virt_addr);
 
-#ifdef DEBUG_PAGING
 	kprintf("PML4: %u\n", pml4_index);
 	kprintf("PDPT: %u\n", pdpt_index);
 	kprintf("PDT : %u\n", pdt_index);
 	kprintf("PT  : %u\n", pt_index);
-#endif
 
 	const uint64_t safe_flags = flags & 
 		(PG_FLAG_RW | PG_FLAG_USER | PG_FLAG_PWT | PG_FLAG_PCD | PG_FLAG_XD);
@@ -317,9 +319,8 @@ static void cleanup_page_table(P_Table* p_table)
 	}
 
 	// Cleanup the actual page table
-#ifdef DEBUG_PAGING
 	kprintf("Cleaning page table: 0x%x\n", p_table);
-#endif
+
 	phys_free_4KIB(VIRT_TO_PHYS(p_table));
 }
 
@@ -347,9 +348,7 @@ static void cleanup_page_directory_table(PD_Table* pd_table)
 	}
 
 	// Cleanup the actual page directory
-#ifdef DEBUG_PAGING
 	kprintf("Cleaning page directory table: 0x%x\n", pd_table);
-#endif
 	phys_free_4KIB(VIRT_TO_PHYS(pd_table));
 }
 
@@ -369,9 +368,7 @@ static void cleanup_page_directory_pointer_table(PDP_Table* pdp_table)
 	}
 
 	// Cleanup the actual page directory pointer table
-#ifdef DEBUG_PAGING
 	kprintf("Cleaning page directory pointer table: 0x%x\n", pdp_table);
-#endif
 	phys_free_4KIB(VIRT_TO_PHYS(pdp_table));
 }
 
@@ -382,7 +379,7 @@ static void cleanup_page_directory_pointer_table(PDP_Table* pdp_table)
 void virt_cleanup_table(void* _table)
 {
 	PML4_Table* table = (PML4_Table*) PHYS_TO_VIRT(_table);
-	for (uint64_t pml4_index = 0; pml4_index < 512; ++pml4_index)
+	for (uint64_t pml4_index = 0; pml4_index < 256; ++pml4_index)
 	{
 		const uint64_t entry = table->entries[pml4_index];
 		if ((entry & PML4_PRESENT) > 0)
@@ -431,44 +428,34 @@ uint8_t virt_lookup_phys(void* table, uint64_t virt_addr, uint64_t* out_phys)
 	const uint64_t pdt_index  = PDT_INDEX(virt_addr);
 	const uint64_t pt_index   = PT_INDEX(virt_addr);
 
-#ifdef DEBUG_PAGING
 	kprintf("PML4: %u\n", pml4_index);
 	kprintf("PDPT: %u\n", pdpt_index);
 	kprintf("PDT : %u\n", pdt_index);
 	kprintf("PT  : %u\n", pt_index);
 	kprintf("Virt: 0x%x\n", virt_addr);
-#endif
 
 	PML4_Table* pml4_table = (PML4_Table*) PHYS_TO_VIRT(table);
 
 	const uint64_t pml4_entry = pml4_table->entries[pml4_index];
 	if ((pml4_entry & PML4_PRESENT) > 0)
 	{
-#ifdef DEBUG_PAGING
 		kprintf("PML4: 0x%x\n", pml4_entry);
-#endif
 		PDP_Table* pdp_table = PHYS_TO_VIRT(PML4E_TO_PDPT(pml4_entry));
 		const uint64_t pdpt_entry = pdp_table->entries[pdpt_index];
 
 		if ((pdpt_entry & PDPT_PRESENT) > 0)
 		{
-#ifdef DEBUG_PAGING
 			kprintf("PDPT: 0x%x\n", pdpt_entry);
-#endif
 			PD_Table* pd_table = PHYS_TO_VIRT(PDPTE_TO_PDT(pdpt_entry));
 			const uint64_t pdt_entry = pd_table->entries[pdt_index];
 
 			if ((pdt_entry & PDT_PRESENT) > 0)
 			{
-#ifdef DEBUG_PAGING
 				kprintf("PDT: 0x%x\n", pdt_entry);
-#endif
 				uint64_t out_address = 0;
 				if ((pdt_entry & PDT_PAGE_SIZE) > 0)
 				{
-#ifdef DEBUG_PAGING
 					kprintf("PAGE_LARGE\n");
-#endif
 					out_address =
 						ENTRY_TO_ADDR(pdt_entry) + (virt_addr & 0xFFF);
 				}
@@ -479,14 +466,10 @@ uint8_t virt_lookup_phys(void* table, uint64_t virt_addr, uint64_t* out_phys)
 				
 					if ((pt_entry & PT_PRESENT) > 0)
 					{
-#ifdef DEBUG_PAGING
 						kprintf("PT: 0x%x - 0x%x \n", pt_entry, ENTRY_TO_ADDR(pt_entry));
-#endif
 						out_address =
 							ENTRY_TO_ADDR(pt_entry) + (virt_addr & 0xFFF);
-#ifdef DEBUG_PAGING
 						kprintf("OUT ADDRESS: 0x%x\n", out_address);
-#endif
 					}
 				}
 
@@ -618,9 +601,7 @@ static uint64_t clone_page_directory_pointer(PDP_Table* pdp_table)
 
 void* virt_clone_mapping(void* _other)
 {
-#ifdef DEBUG_PAGING
 	kprintf("Clone mapping\n");
-#endif
 	PML4_Table* other = (PML4_Table*) PHYS_TO_VIRT(_other);	
 
 	const char* error = "virt_clone_mapping: No memory";
@@ -660,17 +641,13 @@ void* virt_clone_mapping(void* _other)
 		const uint64_t entry = other->entries[i];	
 		if ((entry & PML4_PRESENT) > 0)
 		{
-#ifdef DEBUG_PAGING
 			kprintf("Clone present: 0x%x %u\n", entry, i);
-#endif
 			new_table->entries[i] =
 				clone_page_directory_pointer(PHYS_TO_VIRT(
 						PML4E_TO_PDPT(entry)));	
 			new_table->entries[i] |= (entry & PAGE_COPY_FLAGS);
-#ifdef DEBUG_PAGING
 			kprintf("Clone entry: 0x%x\n", new_table->entries[i]);
 			kprintf("Old present: 0x%x\n", other->entries[i]);
-#endif
 		}
 		else
 		{
