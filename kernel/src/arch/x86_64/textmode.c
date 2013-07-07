@@ -44,14 +44,9 @@ void clear_screen()
 	}
 }
 
-void page_up()
+static void display_page(uint32_t page_offset)
 {
 	clear_screen();
-	if (page_offset > 0)
-	{
-		--page_offset;
-	}
-
 	uint32_t text_y = page_offset*MAX_Y;
 	for (uint32_t disp_y = 0; disp_y < MAX_Y; ++disp_y, ++text_y)
 	{
@@ -65,31 +60,36 @@ void page_up()
 	}
 }
 
+void page_up()
+{
+	if (page_offset > 0)
+	{
+		--page_offset;
+	}
+
+	display_page(page_offset);
+}
+
 void page_down()
 {
-	clear_screen();
 	const uint32_t max_page_offset = write_y / MAX_Y;
 	if (page_offset < max_page_offset)
 	{
 		++page_offset;
 	}
 
-	uint32_t text_y = page_offset*MAX_Y;
-	for (uint32_t disp_y = 0; disp_y < MAX_Y; ++disp_y, ++text_y)
-	{
-		for (uint32_t disp_x = 0; disp_x < MAX_X; ++disp_x)
-		{
-			const uint32_t text_offset = text_y*MAX_X + disp_x;
-			const uint32_t offset = disp_y*MAX_X + disp_x;
-			video[offset].c = text[text_offset];
-			video[offset].color = 0x9;
-		}
-	}
+	display_page(page_offset);
 }
 
 void text_mode_char(char c)
 {
-	// TODO scroll to bottom
+	// Scroll to bottom
+	const uint32_t current_page = write_y / MAX_Y;
+	if (current_page != page_offset)
+	{
+		page_offset = current_page;
+		clear_screen();
+	}
 
 	switch (c)
 	{
@@ -98,7 +98,6 @@ void text_mode_char(char c)
 			{
 				++write_y;
 				if (write_y >= NUM_LINES)
-				// if (write_y >= MAX_Y)
 				{
 					write_y = 0;
 				}
@@ -119,20 +118,26 @@ void text_mode_char(char c)
 
 				// Clear this spot
 				text[write_y*MAX_X + write_x] = ' ';
+
+				const uint32_t offset = (write_y%MAX_Y)*MAX_X + write_x;
+				video[offset].c = ' ';
+				video[offset].color = 0x9;
 			}
 			break;
 		default:
 			{
 				text[write_y*MAX_X + write_x] = c;
-				//video[write_y*MAX_X + write_x].c = c;
-				//video[write_y*MAX_X + write_x].color = 0x9;
+
+				const uint32_t offset = (write_y%MAX_Y)*MAX_X + write_x;
+				video[offset].c = c;
+				video[offset].color = 0x9;
+				
 				++write_x;
 				if (write_x >= MAX_X)
 				{
 					write_x = 0;
 					++write_y;
 					if (write_y >= NUM_LINES)
-				//	if (write_y >= MAX_Y)
 					{
 						write_y = 0;
 					}
