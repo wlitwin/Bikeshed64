@@ -11,8 +11,8 @@ text_mode_t text_mode_info =
 
 void clear_screen()
 {
-	unsigned char* video = (unsigned char*)VIDEO_ADDRESS;
-	for (int i = 0; i < 80*25; ++i)
+	uint16_t* video = (uint16_t*)VIDEO_ADDRESS;
+	for (int i = 0; i < MAX_X*MAX_Y; ++i)
 	{
 		video[i] = 0;
 	}
