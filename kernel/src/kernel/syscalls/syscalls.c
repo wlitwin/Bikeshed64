@@ -5,6 +5,7 @@
 #include "kernel/scheduler/pcb.h"
 #include "kernel/virt_memory/defs.h"
 #include "kernel/scheduler/scheduler.h"
+#include "kernel/keyboard/defs.h"
 #include "kernel/interrupts/defs.h"
 #include "kernel/kprintf.h"
 #include "kernel/klib.h"
@@ -20,6 +21,9 @@ static void fork(PCB*);
 static void exec(PCB*);
 static void exit(PCB*);
 static void msleep(PCB*);
+static void set_priority(PCB*);
+static void key_avail(PCB*);
+static void get_key(PCB*);
 static void syscall_interrupt(uint64_t vector, uint64_t error);
 
 extern PCB* current_pcb;
@@ -84,7 +88,7 @@ void fork(PCB* pcb)
 //============================================================================
 void exec(PCB* pcb)
 {
-
+	UNUSED(pcb);
 }
 
 //============================================================================
@@ -113,12 +117,38 @@ void msleep(PCB* pcb)
 	sleep_pcb(pcb, sleep_time);
 }
 
+//============================================================================
+// Set the priority
+//
+//============================================================================
+void set_priority(PCB* pcb)
+{
+	const uint64_t priority = pcb->context->rdi;
+	ASSERT(priority < 4);
+	pcb->priority = (Priority)priority;
+}
+
+void key_avail(PCB* pcb)
+{
+	pcb->context->rax = keyboard_char_available();	
+	//kprintf("Key Avail: 0x%x\n", pcb->context->rax);
+}
+
+void get_key(PCB* pcb)
+{
+	pcb->context->rax = keyboard_get_char();
+	//kprintf("Get Key: 0x%x\n", pcb->context->rax);
+}
+
 void syscalls_init()
 {
 	syscall_functions[SYSCALL_FORK] = fork;
 	syscall_functions[SYSCALL_EXEC] = exec;
 	syscall_functions[SYSCALL_EXIT] = exit;
 	syscall_functions[SYSCALL_MSLEEP] = msleep;
+	syscall_functions[SYSCALL_SET_PRIO] = set_priority;
+	syscall_functions[SYSCALL_KEY_AVAIL] = key_avail;
+	syscall_functions[SYSCALL_GET_KEY] = get_key;
 
 	interrupts_install_isr(SYSCALL_INT_VEC, syscall_interrupt);
 }
@@ -142,6 +172,7 @@ void syscall_interrupt(uint64_t vector, uint64_t error)
 
 	if (syscall_num >= NUM_SYSCALLS)
 	{
+		kprintf("BAD SYSCALL\n");
 		syscall_functions[SYSCALL_EXIT](current_pcb);
 	}
 	else

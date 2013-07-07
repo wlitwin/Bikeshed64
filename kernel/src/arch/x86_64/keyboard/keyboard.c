@@ -49,6 +49,31 @@ static uint8_t scan_code_table[2][128] =
 #define BUFFER_SIZE 256
 static uint8_t buffer[BUFFER_SIZE];
 static uint32_t next_index = 0;
+static uint32_t last_index = 0;
+static uint32_t buffer_size = 0;
+
+uint8_t keyboard_char_available()
+{
+	return buffer_size > 0;
+}
+
+uint8_t keyboard_get_char()
+{
+	if (!keyboard_char_available())
+	{
+		return '\0';
+	}
+
+	uint8_t val = buffer[last_index];
+	--buffer_size;
+	++last_index;
+	if (last_index >= BUFFER_SIZE)
+	{
+		last_index = 0;
+	}
+
+	return val;
+}
 
 static
 void check_scan_code(uint8_t code)
@@ -79,14 +104,20 @@ void check_scan_code(uint8_t code)
 				code = scan_code_table[shiftdown][code];
 				if (code != 0)
 				{
+					buffer[next_index] = code;
+					++buffer_size;
+
 					++next_index;
 					if (next_index >= BUFFER_SIZE)
 					{
 						next_index = 0;
+						if (next_index == last_index)
+						{
+							last_index = (last_index + 1) % BUFFER_SIZE;
+						}
 					}
 
-					//serial_char(code);
-
+					// For debugging, will be removed
 					if (code == '1')
 					{
 						page_up();
@@ -96,7 +127,6 @@ void check_scan_code(uint8_t code)
 						page_down();
 					}
 
-					buffer[next_index] = code;
 				}
 			}
 		}

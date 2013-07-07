@@ -3,4 +3,8 @@
 
 void keyboard_init(void);
 
+uint8_t keyboard_char_available(void);
+
+uint8_t keyboard_get_char(void);
+
 #endif
