@@ -6,6 +6,8 @@
 
 void main(void)
 {
+	set_priority(3);
+
 	// Create the idle process
 	Pid pid;
 	if (fork(&pid) == SUCCESS)
@@ -13,11 +15,11 @@ void main(void)
 		if (pid == 0)
 		{
 			// Idle process does nothing
-			set_priority(3);
 			while (1) { __asm__ volatile("hlt"); }
 		}
 		else
 		{
+			set_priority(0);
 			// Run the shell
 			shell_loop();
 		}
