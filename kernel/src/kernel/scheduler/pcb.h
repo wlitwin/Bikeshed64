@@ -8,7 +8,6 @@
 #include "arch/x86_64/interrupts/imports.h"
 #endif
 
-typedef uint8_t Priority;
 typedef uint32_t Pid;
 
 typedef enum
@@ -18,6 +17,14 @@ typedef enum
 	SLEEPING,
 	KILLED,
 } State;
+
+typedef enum
+{
+	HIGH = 0,
+	NORMAL,
+	LOW,
+	IDLE
+} Priority;
 
 typedef struct
 {

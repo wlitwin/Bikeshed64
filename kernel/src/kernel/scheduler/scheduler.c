@@ -67,6 +67,9 @@ PCB* alloc_pcb()
 	}
 	kprintf("Allocating PCB: 0x%x\n", pcb);
 
+	pcb->state = READY;
+	pcb->priority = NORMAL;
+
 	return pcb;
 }
 
@@ -148,9 +151,10 @@ uint8_t schedule(PCB* pcb)
 			{
 				QueueNode* node = (QueueNode*)block_alloc(ba_qnodes);
 				ASSERT(node != NULL);
+				ASSERT(pcb->priority < NUM_QUEUES);
 
 				node->data = pcb;
-				queue_enqueue(&queues[0], node);
+				queue_enqueue(&queues[pcb->priority], node);
 			}
 			break;
 		case SLEEPING:
@@ -239,16 +243,23 @@ void dispatch()
 	else { quantum_left -= tick_span; }
 	kprintf("Quantum: %u\n", quantum_left);
 
-	if (queue_empty(&sleep_queue) && queue_empty(&queues[0]))
+	/*if (queue_empty(&sleep_queue) && queue_empty(&queues[0]))
 	{
 		prev_ticks = quantum_left;
 		return;
 	}
+	*/
 
 	// TODO do an initial subtraction from head of sleep queue?
-
-	if (current_pcb->state == SLEEPING || quantum_left == 0)
+	if (current_pcb->state == KILLED)
 	{
+		cleanup_pcb(current_pcb);
+		current_pcb = NULL;
+		quantum_left = 10;
+	}
+	else if (current_pcb->state == SLEEPING || quantum_left == 0)
+	{
+		kprintf("PCB is going to sleep\n");
 		schedule(current_pcb);
 		current_pcb = NULL;
 		quantum_left = 10;
@@ -276,29 +287,33 @@ void dispatch()
 	ASSERT(prev_ticks > 0);
 
 	// Pick the next person to run	
-	while (!queue_empty(&queues[0]))
+	for (uint64_t i = 0; i < NUM_QUEUES; ++i)
 	{
-		QueueNode* node = queue_dequeue(&queues[0]);
-		PCB* next = (PCB*)node->data;
-		block_free(ba_qnodes, node);
-
-		switch (next->state)
+		while (!queue_empty(&queues[i]))
 		{
-			case KILLED:
-				free_pcb(next);
-				continue;
-			case READY:
-				{
-					kprintf("Next: 0x%x\n", next);
-					current_pcb = next;
-					virt_switch_page_table(current_pcb->page_table);
-					timer_set_delay(prev_ticks*one_ms);
-					timer_start();
-				}
-				return;
-			default:
-				panic("Scheduler: Unhandled case!");
-				break;
+			QueueNode* node = queue_dequeue(&queues[i]);
+			ASSERT(node != NULL);
+			PCB* next = (PCB*)node->data;
+			block_free(ba_qnodes, node);
+
+			switch (next->state)
+			{
+				case KILLED:
+					free_pcb(next);
+					continue;
+				case READY:
+					{
+						kprintf("Next: 0x%x\n", next);
+						current_pcb = next;
+						virt_switch_page_table(current_pcb->page_table);
+						timer_set_delay(prev_ticks*one_ms);
+						timer_start();
+					}
+					return;
+				default:
+					panic("Scheduler: Unhandled case!");
+					break;
+			}
 		}
 	}
 
