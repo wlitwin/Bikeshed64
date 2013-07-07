@@ -24,7 +24,7 @@ static void fancy_display_char(const char c)
 			const uint32_t str_offset = rand() % STR_SIZE;
 			video[offset].c = str[str_offset];
 			video[offset].color = text_color;
-			msleep(10);
+			msleep(20);
 		}
 	}
 
@@ -45,6 +45,16 @@ static void display_banner()
 	fancy_display_string("Welcome to Bikeshed64!");
 }
 
+static void write_char(const char c)
+{
+	if (text_mode_info.y == 0 && text_mode_info.x == 0)
+	{
+		clear_screen();
+	}
+
+	text_mode_char(c);
+}
+
 static void write_string(const char* str)
 {
 	while (*str)
@@ -52,25 +62,30 @@ static void write_string(const char* str)
 		char c = *str;
 		++str;
 
-		text_mode_char(c);
-/*		if (y == 0)
-		{
-			y = 1;
-		}
-		*/
+		write_char(c);
 	}
 }
 
 static void read_command()
 {
-	text_mode_string(">");
+	write_string(">");
 
 	command_length = 0;
-	uint8_t key = read_key();
-	while (command_length < COMMAND_SIZE-1 && key != '\n')
+	while (command_length < COMMAND_SIZE-1)
 	{
+		uint8_t key = read_key();
+		if (key == '\n')
+		{
+			if (command_length > 0)
+			{
+				break;
+			}
+
+			continue;
+		}
+
 		// Echo the character
-		text_mode_char(key);
+		write_char(key);
 
 		if (key == '\b')
 		{
@@ -85,8 +100,6 @@ static void read_command()
 			command[command_length] = key;
 			++command_length;
 		}
-
-		key = read_key();
 	}
 	command[command_length] = 0;
 
@@ -104,6 +117,9 @@ static void check_command()
 	else if (streq("tetris", command))
 	{
 		tetris();
+		clear_screen();
+		text_set_pos(0, 0);
+		text_mode_info.color = text_color;
 	}
 	else
 	{
@@ -113,12 +129,9 @@ static void check_command()
 
 void shell_loop()
 {
-	tetris();
-	return;
 	text_set_pos(0, 0);
 	clear_screen();
 	display_banner();
-
 
 	text_set_pos(0, 1);
 	while (1)
