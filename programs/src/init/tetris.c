@@ -14,6 +14,9 @@
 #define TICK_DURATION 5000
 #define TICKS_PER_SEC 1
 
+#define SCREEN_X_TO_BOARD_X(SCREEN_X) ((SCREEN_X-BOARD_ORIGIN_X)/2)
+#define SCREEN_Y_TO_BOARD_Y(SCREEN_Y) (SCREEN_Y - BOARD_ORIGIN_Y)
+
 #define NEXT_PIECE_ORIGIN_X (BOARD_ORIGIN_X-17)
 #define NEXT_PIECE_ORIGIN_Y BOARD_ORIGIN_Y
 #define NEXT_PIECE_SIZE_X 12
@@ -52,15 +55,44 @@ typedef enum
 	GAME_OVER
 } state_t;
 
-static block_map_t block_offsets[NUM_PIECES] =
+static block_map_t block_offsets[4][NUM_PIECES] =
 {
-	{ .arr_x = { -1,  0, 1, 2 }, .arr_y = { 0, 0, 0, 0 } }, // Line
-	{ .arr_x = { -1,  0, 1, 1 }, .arr_y = { 0, 0, 0, 1 } }, // J
-	{ .arr_x = { -1, -1, 0, 1 }, .arr_y = { 1, 0, 0, 0 } }, // L
-	{ .arr_x = {  0,  1, 0, 1 }, .arr_y = { 0, 0, 1, 1 } }, // O
-	{ .arr_x = { -1,  0, 0, 1 }, .arr_y = { 1, 1, 0, 0 } }, // S
-	{ .arr_x = { -1,  0, 0, 1 }, .arr_y = { 0, 0, 1, 0 } }, // T
-	{ .arr_x = { -1,  0, 0, 1 }, .arr_y = { 0, 0, 1, 1 } }, // Z
+	{ // Rotation 0
+		{ .arr_x = { -1,  0, 1, 2 }, .arr_y = { 0, 0, 0, 0 } }, // I
+		{ .arr_x = { -1, 0, 1, 1 }, .arr_y = { 0, 0, 0, 1 } }, // J
+		{ .arr_x = { -1, -1, 0, 1 }, .arr_y = { 0, 1, 0, 0 } }, // L
+		{ .arr_x = { 0, 1, 0, 1 }, .arr_y = { 0, 0, 1, 1 } }, // O
+		{ .arr_x = { -1, 0, 0, 1 }, .arr_y = { 1, 1, 0, 0 } }, // S
+		{ .arr_x = { -1, 0, 0, 1 }, .arr_y = { 0, 0, 1, 0 } }, // T
+		{ .arr_x = { -1, 0, 0, 1 }, .arr_y = { 0, 0, 1, 1 } }, // Z
+	},
+	{ // Rotation 1
+		{ .arr_x = { 0, 0, 0, 0 }, .arr_y = { -1, 0, 1, 2 } }, // I
+		{ .arr_x = { 0, 0, 0, -1 }, .arr_y = { -1, 0, 1, 1 } }, // J
+		{ .arr_x = { -1, 0, 0, 0 }, .arr_y = { -1, -1, 0, 1 } }, // L
+		{ .arr_x = { 0, 1, 0, 1 }, .arr_y = { 0, 0, 1, 1 } }, // O
+		{ .arr_x = { -1, -1, 0, 0 }, .arr_y = { -1, 0, 0, 1 } }, // S
+		{ .arr_x = { 0, 0, -1, 0 }, .arr_y = { -1, 0, 0, 1 } }, // T
+		{ .arr_x = { 0, 0, 1, 1 }, .arr_y = { 1, 0, 0, -1 } }, // Z
+	},
+	{ // Rotation 2
+		{ .arr_x = { -1, 0, 1, 2 }, .arr_y = { 0, 0, 0, 0 } }, // I
+		{ .arr_x = { 1, 0, -1, -1 }, .arr_y = { 0, 0, 0, -1 } }, // J
+		{ .arr_x = { 1, 1, 0, -1 }, .arr_y = { 0, -1, 0, 0 } }, // L
+		{ .arr_x = { 0, 1, 0, 1 }, .arr_y = { 0, 0, 1, 1 } }, // O
+		{ .arr_x = { -1, 0, 0, 1 }, .arr_y = { 1, 1, 0, 0 } }, // S
+		{ .arr_x = { -1, 0, 0, 1 }, .arr_y = { 0, 0, -1, 0 } }, // T
+		{ .arr_x = { -1, 0, 0, 1 }, .arr_y = { 0, 0, 1, 1 } }, // Z
+	},
+	{ // Rotation 3
+		{ .arr_x = { 0, 0, 0, 0 }, .arr_y = { -1, 0, 1, 2 } }, // I
+		{ .arr_x = { 0, 0, 0, 1 }, .arr_y = { 1, 0, -1, -1 } }, // J
+		{ .arr_x = { 1, 0, 0, 0 }, .arr_y = { 1, 1, 0, -1 } }, // L
+		{ .arr_x = { 0, 1, 0, 1 }, .arr_y = { 0, 0, 1, 1 } }, // O
+		{ .arr_x = { -1, -1, 0, 0 }, .arr_y = { -1, 0, 0, 1 } }, // S
+		{ .arr_x = { 0, 0, 1, 0 }, .arr_y = { -1, 0, 0, 1 } }, // T
+		{ .arr_x = { 0, 0, 1, 1 }, .arr_y = { 1, 0, 0, -1 } }, // Z
+	}
 };
 
 static color_t piece_colors[NUM_PIECES] = 
@@ -77,7 +109,9 @@ static color_t piece_colors[NUM_PIECES] =
 static uint8_t gameboard[BOARD_X][BOARD_Y];
 static uint8_t quit = 0;
 static state_t state = SPAWN_BLOCK;
+static state_t state_pause_prev = SPAWN_BLOCK;
 static piece_t current_piece = P_I;
+static uint8_t current_rotation = 0;
 static piece_t next_piece = P_I;
 static int32_t piece_origin_x = 0;
 static int32_t piece_origin_y = 0;
@@ -123,7 +157,7 @@ static void draw_game_borders()
 	// Draw left and right border
 	for (uint32_t y = BOARD_ORIGIN_Y-1; y < MAX_VGA_Y+1; ++y)
 	{
-		const uint32_t off1 = y*MAX_X + BOARD_ORIGIN_X - 1;
+		const uint32_t off1 = y*MAX_X + (BOARD_ORIGIN_X - 1);
 		video[off1].c = ' ';
 		video[off1].color = border_color;
 
@@ -158,17 +192,17 @@ static void draw_game_borders()
 	}
 }
 
-static void draw_piece(int32_t ox, int32_t oy, piece_t piece, color_t color)
+static void draw_piece(int32_t ox, int32_t oy, uint8_t rotation, piece_t piece, color_t color)
 {
 	for (uint32_t i = 0; i < 4; ++i)
 	{
-		const int32_t px = block_offsets[piece].arr_x[i]*2 + ox;
-		const int32_t py = block_offsets[piece].arr_y[i] + oy;
+		const int32_t px = block_offsets[rotation][piece].arr_x[i]*2 + ox;
+		const int32_t py = block_offsets[rotation][piece].arr_y[i] + oy;
 		const int32_t off1 = py*MAX_X + px;
 		video[off1].c = ' ';
 		video[off1].color = color;
 
-		const int32_t off2 = off1-1;
+		const int32_t off2 = off1+1;
 		video[off2].c = ' ';
 		video[off2].color = color;
 	}
@@ -176,20 +210,20 @@ static void draw_piece(int32_t ox, int32_t oy, piece_t piece, color_t color)
 
 static void draw_current_piece()
 {
-	draw_piece(piece_origin_x, piece_origin_y, current_piece, piece_colors[current_piece]);
+	draw_piece(piece_origin_x, piece_origin_y, current_rotation, current_piece, piece_colors[current_piece]);
 }
 
 static void choose_piece()
 {
-	next_piece = P_I;// rand() % NUM_PIECES;
+	next_piece = P_S;//rand() % NUM_PIECES;
 }
 
-static uint8_t check_collision(int32_t ox, int32_t oy, piece_t piece)
+static uint8_t check_collision(int32_t ox, int32_t oy, uint8_t rotation, piece_t piece)
 {
 	for (uint32_t i = 0; i < 4; ++i)
 	{
-		const int32_t px = block_offsets[piece].arr_x[i] + ox;
-		const int32_t py = block_offsets[piece].arr_y[i] + oy;
+		const int32_t px = block_offsets[rotation][piece].arr_x[i] + ox;
+		const int32_t py = block_offsets[rotation][piece].arr_y[i] + oy;
 
 		if (px < 0 || 
 			px >= BOARD_X || 
@@ -206,9 +240,9 @@ static uint8_t check_collision(int32_t ox, int32_t oy, piece_t piece)
 
 static uint8_t shift_down()
 {
-	const int32_t adjusted_origin_x = piece_origin_x - BOARD_ORIGIN_X - BOARD_X/2;
-	const int32_t adjusted_origin_y = piece_origin_y - BOARD_ORIGIN_Y;
-	if (check_collision(adjusted_origin_x, adjusted_origin_y+1, current_piece))
+	const int32_t adjusted_origin_x = SCREEN_X_TO_BOARD_X(piece_origin_x);
+	const int32_t adjusted_origin_y = SCREEN_Y_TO_BOARD_Y(piece_origin_y);
+	if (check_collision(adjusted_origin_x, adjusted_origin_y+1, current_rotation, current_piece))
 	{
 		return 1;
 	}
@@ -223,6 +257,7 @@ static uint8_t rotate_pressed = 0;
 static uint8_t left_pressed = 0;
 static uint8_t right_pressed = 0;
 static uint8_t drop_pressed = 0;
+static uint8_t pause_pressed = 0;
 
 static void update_keys()
 {
@@ -231,6 +266,7 @@ static void update_keys()
 	right_pressed = 0;
 	drop_pressed = 0;
 	rotate_pressed = 0;
+	pause_pressed = 0;
 
 	while (key_available())
 	{
@@ -250,6 +286,10 @@ static void update_keys()
 			case 'D':
 				right_pressed = 1;
 				break;
+			case 'p':
+			case 'P':
+				pause_pressed = 1;
+				break;
 			case 'w':
 			case 'W':
 				rotate_pressed = 1;
@@ -263,38 +303,53 @@ static void update_keys()
 
 static uint8_t handle_actions()
 {
-	const int32_t adjusted_origin_x = piece_origin_x - BOARD_ORIGIN_X - BOARD_X/2;
-	const int32_t adjusted_origin_y = piece_origin_y - BOARD_ORIGIN_Y;
+	const int32_t adjusted_origin_x = SCREEN_X_TO_BOARD_X(piece_origin_x);
+	const int32_t adjusted_origin_y = SCREEN_Y_TO_BOARD_Y(piece_origin_y);
 
 	if (left_pressed &&
-			!check_collision(adjusted_origin_x-1, adjusted_origin_y, current_piece))
+			!check_collision(adjusted_origin_x-1, adjusted_origin_y, current_rotation, current_piece))
 	{
-		--piece_origin_x;
+		piece_origin_x -= 2;
 	}
 	else if (right_pressed &&
-			!check_collision(adjusted_origin_x+1, adjusted_origin_y, current_piece))
+			!check_collision(adjusted_origin_x+1, adjusted_origin_y, current_rotation, current_piece))
 	{
-		++piece_origin_x;
+		piece_origin_x += 2;
 	}
-	else if (rotate_pressed)
+	else if (rotate_pressed &&
+			!check_collision(adjusted_origin_x, adjusted_origin_y, (current_rotation+1)&3, current_piece))
 	{
-		// TODO rotate piece
+		current_rotation = (current_rotation + 1) & 3;
 	}
 	else if (drop_pressed)
 	{
 		// Figure out how far the piece can drop
 		int32_t drop_amount = 1;
-		while (!check_collision(adjusted_origin_x, adjusted_origin_y+drop_amount, current_piece))
+		while (!check_collision(adjusted_origin_x, adjusted_origin_y+drop_amount, current_rotation, current_piece))
 		{
 			++drop_amount;
 		}
 
-		piece_origin_y += drop_amount;
+		piece_origin_y += drop_amount-1;
 
 		return 1;
 	}
 
 	return 0;
+}
+
+static void place_current_block_on_board()
+{
+	const int32_t ox = SCREEN_X_TO_BOARD_X(piece_origin_x);
+	const int32_t oy = SCREEN_Y_TO_BOARD_Y(piece_origin_y);
+
+	for (uint32_t i = 0; i < 4; ++i)
+	{
+		const int32_t px = block_offsets[current_rotation][current_piece].arr_x[i];
+		const int32_t py = block_offsets[current_rotation][current_piece].arr_y[i];
+
+		gameboard[px+ox][py+oy] = current_piece;
+	}
 }
 
 static void update()
@@ -306,6 +361,19 @@ static void update()
 		return;
 	}
 
+	if (pause_pressed)
+	{
+		if (state == PAUSE)
+		{
+			state = state_pause_prev;
+		}
+		else
+		{
+			state_pause_prev = state;
+			state = PAUSE;
+		}
+	}
+
 	switch (state)
 	{
 		case SPAWN_BLOCK:
@@ -313,22 +381,34 @@ static void update()
 			choose_piece();
 
 			// Set the piece origin
-			piece_origin_x = BOARD_ORIGIN_X+BOARD_X;
-			piece_origin_y = BOARD_ORIGIN_Y;
-			
-			// Change the state
-			state = SHIFT_DOWN_BLOCKS;
-			ticks = 0;
+			piece_origin_x = BOARD_ORIGIN_X + BOARD_X;
+			piece_origin_y = BOARD_ORIGIN_Y + 10;
+
+			const int32_t bx = SCREEN_X_TO_BOARD_X(piece_origin_x);
+			const int32_t by = SCREEN_Y_TO_BOARD_Y(piece_origin_y);
+			if (check_collision(bx, by, current_rotation, current_piece))
+			{
+				// Can't place the new piece
+				state = GAME_OVER;
+			}
+			else
+			{
+				// Can place the new piece
+				draw_current_piece();
+				state = SHIFT_DOWN_BLOCKS;
+				ticks = 0;
+			}
 			break;
 		case SHIFT_DOWN_BLOCKS:
 			// Erase the piece at the current location
-			draw_piece(piece_origin_x, piece_origin_y, current_piece, background_color);
+			draw_piece(piece_origin_x, piece_origin_y, current_rotation, current_piece, background_color);
 			if (handle_actions())
 			{
+				place_current_block_on_board();
 				state = LINE_CHECK;
 			}
 
-			++ticks;
+/*			++ticks;
 			if (ticks >= TICKS_PER_SEC)
 			{
 				ticks = 0;
@@ -337,15 +417,20 @@ static void update()
 				if (shift_down())
 				{
 					// Collided
+					place_current_block_on_board();
 					state = LINE_CHECK;
 				}
 			}
+			*/
+			draw_current_piece();
 			break;
 		case LINE_CHECK:
+			state = SPAWN_BLOCK;
 			break;
 		case LINE_CHECK_FLASH:
 			break;
 		case PAUSE:
+			// Do nothing
 			break;
 		case GAME_OVER:
 			break;
@@ -354,7 +439,7 @@ static void update()
 
 static void render()
 {
-	draw_current_piece();
+
 }
 
 void tetris()
