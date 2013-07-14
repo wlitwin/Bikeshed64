@@ -3,7 +3,7 @@
 
 #include "../inttypes.h"
 
-#define VIDEO_ADDRESS 0xFFFF8000000B8000
+#define VIDEO_ADDRESS 0xFFFFFFFFFFBFF000
 #define MAX_X 80
 #define MAX_Y 25
 

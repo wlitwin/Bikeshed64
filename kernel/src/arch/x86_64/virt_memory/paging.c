@@ -61,6 +61,14 @@ void virt_memory_init()
 	clear_screen();
 
 	phys_memory_init();
+
+	// TODO - hack, user processes want to access VGA memory, but right now
+	//        any good way requires some changes. For example if we map the
+	//        actual physical address, then virt_clone_mapping() is broken
+	//        because it assumes all mappings are backed by some allocated
+	//        space, when instead we want a dumb pass-through.
+	virt_map_phys(kernel_table, 0xFFFFFFFFFFBFF000, 0xB8000, 
+			PG_FLAG_RW | PG_FLAG_USER | PG_FLAG_PWT | PG_FLAG_PCD, PAGE_SMALL);
 }
 
 //=============================================================================
