@@ -11,6 +11,14 @@
 #include "kernel/klib.h"
 
 
+#ifndef DEBUG_SYSCALL
+#define kprintf(...)
+#define DEBUG(X)
+#else
+#define DEBUG(X) X
+#endif
+
+
 #ifdef BIKESHED_X86_64
 #include "arch/x86_64/virt_memory/paging.h"
 #include "arch/x86_64/virt_memory/physical.h"
@@ -43,6 +51,7 @@ static void (*syscall_functions[NUM_SYSCALLS])(PCB*); /*=
 //============================================================================
 void fork(PCB* pcb)
 {
+	kprintf("====FORK====\n");
 	PCB* new_pcb = alloc_pcb();	
 	if (new_pcb == NULL)
 	{
@@ -53,9 +62,14 @@ void fork(PCB* pcb)
 
 	memcpy(new_pcb, pcb, sizeof(PCB));
 
+	kprintf("PCB RDI: 0x%x\n", pcb->context->rdi);
+	kprintf("Context Location: 0x%x\n", pcb->context);
+
 	// Okay we have a new PCB, try to clone the address space
 	void* new_page_table = virt_clone_mapping(pcb->page_table);
 	new_pcb->page_table = new_page_table;
+
+	kprintf("Context Location 2: 0x%x\n", pcb->context);
 
 	uint64_t new_context_addr = 0;
 	if (!virt_lookup_phys(new_page_table, (uint64_t)pcb->context, &new_context_addr))
@@ -63,22 +77,40 @@ void fork(PCB* pcb)
 		panic("Fork: failed to lookup context location, very bad!");
 	}
 
+	kprintf("new_context_addr: 0x%x\n", new_context_addr);
 	Context* new_context = (Context*)PHYS_TO_VIRT(new_context_addr);
+	// Not necessary, happens as part of the address space cloning
+	// Kept here as a reminder in case things change again
+	//memcpy(new_context, pcb->context, sizeof(Context));
+	kprintf("New Context: 0x%x\n", new_context);
 
-	pcb->context->rax = SUCCESS;	
+	new_pcb->context = pcb->context;
+
+	pcb->context->rax = SUCCESS;
 	*((Pid*)pcb->context->rdi) = 0;
 	new_context->rax = SUCCESS;
+
+	kprintf("New context RDI: 0x%x\n", new_context->rdi);
+
+	kprintf("new page table: %0x\n", new_page_table);
 
 	uint64_t pid_param_location = 0;
 	if (!virt_lookup_phys(new_page_table, (uint64_t)new_context->rdi, &pid_param_location))
 	{
 		panic("Fork: failed to lookup parameter location!");
 	}
+	kprintf("new page table: 0x%x\n", new_page_table);
+	kprintf("pid location:   0x%x\n", pid_param_location);
+
 	Pid* param_pid = (Pid*)PHYS_TO_VIRT(pid_param_location);
 	*param_pid = 1;
 
+	kprintf("New CONTEXT\n");
+	DEBUG(dump_context(new_context));
+
 	// Schedule the new pcb, and call dispatch because the timer may not be running
 	schedule(new_pcb);
+	kprintf("====DISPATCHING!====\n");
 	dispatch();
 }
 
@@ -124,7 +156,8 @@ void msleep(PCB* pcb)
 void set_priority(PCB* pcb)
 {
 	const uint64_t priority = pcb->context->rdi;
-	ASSERT(priority < 4);
+	ASSERT(priority <= IDLE);
+	kprintf("PCB: 0x%x - new priority: %u\n", pcb, priority);
 	pcb->priority = (Priority)priority;
 }
 
@@ -158,8 +191,12 @@ void syscall_interrupt(uint64_t vector, uint64_t error)
 	UNUSED(error);
 	// Stop the current processes quantum
 	timer_stop();
-	
+
+	kprintf("Context Location: 0x%x\n", current_pcb->context);
+
 #ifdef BIKESHED_X86_64		
+	DEBUG(dump_context(current_pcb->context));
+
 	if (current_pcb == NULL)
 	{
 		panic("SYSCALL: Current PCB is NULL!");
@@ -167,8 +204,8 @@ void syscall_interrupt(uint64_t vector, uint64_t error)
 
 	// Check the syscall number and dispatch on it
 	uint64_t syscall_num = current_pcb->context->r10;
-//	kprintf("GOT SYSCALL: %u\n", syscall_num);
-//	kprintf("PARAM1: 0x%x\n", current_pcb->context->rdi);
+	kprintf("=========GOT SYSCALL: %u=========\n", syscall_num);
+	kprintf("PARAM1: 0x%x\n", current_pcb->context->rdi);
 
 	if (syscall_num >= NUM_SYSCALLS)
 	{
@@ -180,7 +217,7 @@ void syscall_interrupt(uint64_t vector, uint64_t error)
 		syscall_functions[syscall_num](current_pcb);
 	}
 
-//	kprintf("Returned from syscall\n");
+	kprintf("=========Returned from syscall=========\n");
 #else
 #error "System calls are not implemented for this architecture"
 #endif

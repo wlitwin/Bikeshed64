@@ -13,6 +13,7 @@
 #ifdef BIKESHED_X86_64
 #include "arch/x86_64/virt_memory/physical.h"
 #include "arch/x86_64/virt_memory/paging.h"
+#include "arch/x86_64/interrupts/tss.h"
 #endif
 
 #ifndef DEBUG_SCHEDULER
@@ -109,6 +110,10 @@ void create_init_process()
 	timer_set_delay(quantum_left*one_ms);
 	timer_start();
 
+#ifdef BIKESHED_X86_64
+	tss_set_context_stack(CONTEXT_STACK_LOCATION+CONTEXT_STACK_SIZE);
+#endif
+
 	// The stack has been setup in such a way that calling the ISR restore
 	// function will transfer control to the user process.
 	__asm__ volatile("jmp isr_restore");
@@ -193,6 +198,7 @@ void sleep_pcb(PCB* pcb, time_t time)
 // TODO don't go through so many function calls
 void timer_interrupt()
 {
+	kprintf("Timer expired\n");
 	dispatch();
 }
 
@@ -259,7 +265,8 @@ void dispatch()
 	}
 	else if (current_pcb->state == SLEEPING || quantum_left == 0)
 	{
-		kprintf("PCB is going to sleep\n");
+		if (current_pcb->state == SLEEPING) { kprintf("PCB going to sleep\n"); }
+		else { kprintf("PCB quantum up\n"); }
 		schedule(current_pcb);
 		current_pcb = NULL;
 		quantum_left = 10;
@@ -303,9 +310,12 @@ void dispatch()
 					continue;
 				case READY:
 					{
-						kprintf("Next: 0x%x\n", next);
+						kprintf("Next: 0x%x - for %u\n", next, prev_ticks);
 						current_pcb = next;
 						virt_switch_page_table(current_pcb->page_table);
+//			#ifdef BIKESHED_X86_64
+//						tss_set_context_stack((uint64_t)current_pcb->context);	
+//			#endif
 						timer_set_delay(prev_ticks*one_ms);
 						timer_start();
 					}
