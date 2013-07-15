@@ -3,6 +3,7 @@
 
 .globl _start
 _start:
+
 	# Clear the BSS section
 	movabsq $sbss, %rdi
 	movabsq $ebss, %rax
@@ -17,5 +18,4 @@ clear_bss_loop:
 	call exit
 
 _halt:
-	hlt
 	jmp _halt
