@@ -160,8 +160,7 @@ uint8_t virt_map_phys(void* _table, const uint64_t virt_addr, const uint64_t phy
 	kprintf("PDT : %u\n", pdt_index);
 	kprintf("PT  : %u\n", pt_index);
 
-	const uint64_t safe_flags = flags & 
-		(PG_FLAG_RW | PG_FLAG_USER | PG_FLAG_PWT | PG_FLAG_PCD | PG_FLAG_XD);
+	const uint64_t safe_flags = flags & PG_SAFE_FLAGS;
 
 	if ((table->entries[pml4_index] & PML4_PRESENT) == 0)	
 	{
@@ -174,7 +173,7 @@ uint8_t virt_map_phys(void* _table, const uint64_t virt_addr, const uint64_t phy
 
 		memclr(pdp_table, sizeof(PDP_Table));
 
-		table->entries[pml4_index] = (uint64_t) VIRT_TO_PHYS(pdp_table) | PML4_WRITABLE | PML4_PRESENT;
+		table->entries[pml4_index] = (uint64_t) VIRT_TO_PHYS(pdp_table) | PML4_WRITABLE | PML4_PRESENT | safe_flags;
 		invlpg(pdp_table);
 	}
 
@@ -189,7 +188,7 @@ uint8_t virt_map_phys(void* _table, const uint64_t virt_addr, const uint64_t phy
 
 		memclr(pd_table, sizeof(PD_Table));
 
-		pdp_table->entries[pdpt_index] = (uint64_t) VIRT_TO_PHYS(pd_table) | PDPT_WRITABLE | PDPT_PRESENT;
+		pdp_table->entries[pdpt_index] = (uint64_t) VIRT_TO_PHYS(pd_table) | PDPT_WRITABLE | PDPT_PRESENT | safe_flags;
 		invlpg(pd_table);
 	}
 
@@ -206,7 +205,7 @@ uint8_t virt_map_phys(void* _table, const uint64_t virt_addr, const uint64_t phy
 
 	if (page_size == PAGE_LARGE)
 	{
-		pd_table->entries[pdt_index] = (uint64_t)MASK_2MIB(phys_addr) | PDT_PAGE_SIZE | PDT_PRESENT;
+		pd_table->entries[pdt_index] = (uint64_t)MASK_2MIB(phys_addr) | PDT_PAGE_SIZE | PDT_PRESENT | safe_flags;
 		pd_table->entries[pdt_index] |= safe_flags;
 	}
 	else if (page_size == PAGE_SMALL)
@@ -222,7 +221,7 @@ uint8_t virt_map_phys(void* _table, const uint64_t virt_addr, const uint64_t phy
 
 			memclr(p_table, sizeof(P_Table));	
 
-			pd_table->entries[pdt_index] = (uint64_t)VIRT_TO_PHYS(p_table) | PDT_WRITABLE | PDT_PRESENT;
+			pd_table->entries[pdt_index] = (uint64_t)VIRT_TO_PHYS(p_table) | PDT_WRITABLE | PDT_PRESENT | safe_flags;
 			invlpg(p_table);
 		}
 
@@ -236,8 +235,7 @@ uint8_t virt_map_phys(void* _table, const uint64_t virt_addr, const uint64_t phy
 			panic("Address already mapped!\n");
 		}
 
-		p_table->entries[pt_index] = (uint64_t)MASK_4KIB(phys_addr) | PT_PRESENT;
-		p_table->entries[pt_index] |= safe_flags;
+		p_table->entries[pt_index] = (uint64_t)MASK_4KIB(phys_addr) | PT_PRESENT | safe_flags;
 	}
 	else
 	{
@@ -436,30 +434,32 @@ uint8_t virt_lookup_phys(void* table, uint64_t virt_addr, uint64_t* out_phys)
 	const uint64_t pdt_index  = PDT_INDEX(virt_addr);
 	const uint64_t pt_index   = PT_INDEX(virt_addr);
 
+	kprintf("VIRT LOOKUP PHYS\n");
+	kprintf("Virt: 0x%x\n", virt_addr);
 	kprintf("PML4: %u\n", pml4_index);
 	kprintf("PDPT: %u\n", pdpt_index);
 	kprintf("PDT : %u\n", pdt_index);
 	kprintf("PT  : %u\n", pt_index);
-	kprintf("Virt: 0x%x\n", virt_addr);
+	kprintf("Table: 0x%x\n", table);
 
 	PML4_Table* pml4_table = (PML4_Table*) PHYS_TO_VIRT(table);
 
 	const uint64_t pml4_entry = pml4_table->entries[pml4_index];
+	kprintf("PML4: 0x%x\n", pml4_entry);
 	if ((pml4_entry & PML4_PRESENT) > 0)
 	{
-		kprintf("PML4: 0x%x\n", pml4_entry);
 		PDP_Table* pdp_table = PHYS_TO_VIRT(PML4E_TO_PDPT(pml4_entry));
 		const uint64_t pdpt_entry = pdp_table->entries[pdpt_index];
 
+		kprintf("PDPT: 0x%x\n", pdpt_entry);
 		if ((pdpt_entry & PDPT_PRESENT) > 0)
 		{
-			kprintf("PDPT: 0x%x\n", pdpt_entry);
 			PD_Table* pd_table = PHYS_TO_VIRT(PDPTE_TO_PDT(pdpt_entry));
 			const uint64_t pdt_entry = pd_table->entries[pdt_index];
 
+			kprintf("PDT: 0x%x\n", pdt_entry);
 			if ((pdt_entry & PDT_PRESENT) > 0)
 			{
-				kprintf("PDT: 0x%x\n", pdt_entry);
 				uint64_t out_address = 0;
 				if ((pdt_entry & PDT_PAGE_SIZE) > 0)
 				{
@@ -469,9 +469,11 @@ uint8_t virt_lookup_phys(void* table, uint64_t virt_addr, uint64_t* out_phys)
 				}
 				else
 				{
+					kprintf("PAGE_SMALL\n");
 					P_Table* p_table = PHYS_TO_VIRT(PDTE_TO_PT(pdt_entry));
 					const uint64_t pt_entry = p_table->entries[pt_index];
 				
+					kprintf("PT: 0x%x\n", pt_entry);
 					if ((pt_entry & PT_PRESENT) > 0)
 					{
 						kprintf("PT: 0x%x - 0x%x \n", pt_entry, ENTRY_TO_ADDR(pt_entry));
@@ -508,6 +510,8 @@ static uint64_t clone_page_table(P_Table* p_table)
 		{
 			void* dst = PHYS_TO_VIRT(phys_alloc_4KIB_safe(error2));
 			void* src = PHYS_TO_VIRT(ENTRY_TO_ADDR(entry));
+
+			kprintf("PT Cloning Entry: 0x%x - IDX: %u - 0x%x - 0x%x\n", entry, i, dst, src);
 
 			memcpy(dst, src, PAGE_SMALL_SIZE);
 
