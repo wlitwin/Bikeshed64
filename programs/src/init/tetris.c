@@ -66,75 +66,75 @@ typedef enum
 
 static block_map_t block_offsets[4][NUM_PIECES] =
 {
-	{ // Rotation 0
-		{ .arr_x = { -1,  0, 1, 2 }, .arr_y = { 0, 0, 0, 0 } }, // I
-		{ .arr_x = { -1, 0, 1, 1 }, .arr_y = { 0, 0, 0, 1 } }, // J
-		{ .arr_x = { -1, -1, 0, 1 }, .arr_y = { 0, 1, 0, 0 } }, // L
-		{ .arr_x = { 0, 1, 0, 1 }, .arr_y = { 0, 0, 1, 1 } }, // O
-		{ .arr_x = { -1, 0, 0, 1 }, .arr_y = { 1, 1, 0, 0 } }, // S
-		{ .arr_x = { -1, 0, 0, 1 }, .arr_y = { 0, 0, 1, 0 } }, // T
-		{ .arr_x = { -1, 0, 0, 1 }, .arr_y = { 0, 0, 1, 1 } }, // Z
+	{ // Rotation  0
+		{ .arr_x = { -1,  0,  1,  2 }, .arr_y = {  0,  0,  0,  0 } }, // I
+		{ .arr_x = { -1,  0,  1,  1 }, .arr_y = {  0,  0,  0,  1 } }, // J
+		{ .arr_x = { -1, -1,  0,  1 }, .arr_y = {  0,  1,  0,  0 } }, // L
+		{ .arr_x = {  0,  1,  0,  1 }, .arr_y = {  0,  0,  1,  1 } }, // O
+		{ .arr_x = { -1,  0,  0,  1 }, .arr_y = {  1,  1,  0,  0 } }, // S
+		{ .arr_x = { -1,  0,  0,  1 }, .arr_y = {  0,  0,  1,  0 } }, // T
+		{ .arr_x = { -1,  0,  0,  1 }, .arr_y = {  0,  0,  1,  1 } }, // Z
 	},
 	{ // Rotation 1
-		{ .arr_x = { 0, 0, 0, 0 }, .arr_y = { -1, 0, 1, 2 } }, // I
-		{ .arr_x = { 0, 0, 0, -1 }, .arr_y = { -1, 0, 1, 1 } }, // J
-		{ .arr_x = { -1, 0, 0, 0 }, .arr_y = { -1, -1, 0, 1 } }, // L
-		{ .arr_x = { 0, 1, 0, 1 }, .arr_y = { 0, 0, 1, 1 } }, // O
-		{ .arr_x = { -1, -1, 0, 0 }, .arr_y = { -1, 0, 0, 1 } }, // S
-		{ .arr_x = { 0, 0, -1, 0 }, .arr_y = { -1, 0, 0, 1 } }, // T
-		{ .arr_x = { 0, 0, 1, 1 }, .arr_y = { 1, 0, 0, -1 } }, // Z
+		{ .arr_x = {  0,  0,  0,  0 }, .arr_y = { -1,  0,  1,  2 } }, // I
+		{ .arr_x = {  0,  0,  0, -1 }, .arr_y = { -1,  0,  1,  1 } }, // J
+		{ .arr_x = { -1,  0,  0,  0 }, .arr_y = { -1, -1,  0,  1 } }, // L
+		{ .arr_x = {  0,  1,  0,  1 }, .arr_y = {  0,  0,  1,  1 } }, // O
+		{ .arr_x = { -1, -1,  0,  0 }, .arr_y = { -1,  0,  0,  1 } }, // S
+		{ .arr_x = {  0,  0, -1,  0 }, .arr_y = { -1,  0,  0,  1 } }, // T
+		{ .arr_x = {  0,  0,  1,  1 }, .arr_y = {  1,  0,  0, -1 } }, // Z
 	},
 	{ // Rotation 2
-		{ .arr_x = { -1, 0, 1, 2 }, .arr_y = { 0, 0, 0, 0 } }, // I
-		{ .arr_x = { 1, 0, -1, -1 }, .arr_y = { 0, 0, 0, -1 } }, // J
-		{ .arr_x = { 1, 1, 0, -1 }, .arr_y = { 0, -1, 0, 0 } }, // L
-		{ .arr_x = { 0, 1, 0, 1 }, .arr_y = { 0, 0, 1, 1 } }, // O
-		{ .arr_x = { -1, 0, 0, 1 }, .arr_y = { 1, 1, 0, 0 } }, // S
-		{ .arr_x = { -1, 0, 0, 1 }, .arr_y = { 0, 0, -1, 0 } }, // T
-		{ .arr_x = { -1, 0, 0, 1 }, .arr_y = { 0, 0, 1, 1 } }, // Z
+		{ .arr_x = { -1,  0,  1,  2 }, .arr_y = {  0,  0,  0,  0 } }, // I
+		{ .arr_x = {  1,  0, -1, -1 }, .arr_y = {  0,  0,  0, -1 } }, // J
+		{ .arr_x = {  1,  1,  0, -1 }, .arr_y = {  0, -1,  0,  0 } }, // L
+		{ .arr_x = {  0,  1,  0,  1 }, .arr_y = {  0,  0,  1,  1 } }, // O
+		{ .arr_x = { -1,  0,  0,  1 }, .arr_y = {  1,  1,  0,  0 } }, // S
+		{ .arr_x = { -1,  0,  0,  1 }, .arr_y = {  0,  0, -1,  0 } }, // T
+		{ .arr_x = { -1,  0,  0,  1 }, .arr_y = {  0,  0,  1,  1 } }, // Z
 	},
 	{ // Rotation 3
-		{ .arr_x = { 0, 0, 0, 0 }, .arr_y = { -1, 0, 1, 2 } }, // I
-		{ .arr_x = { 0, 0, 0, 1 }, .arr_y = { 1, 0, -1, -1 } }, // J
-		{ .arr_x = { 1, 0, 0, 0 }, .arr_y = { 1, 1, 0, -1 } }, // L
-		{ .arr_x = { 0, 1, 0, 1 }, .arr_y = { 0, 0, 1, 1 } }, // O
-		{ .arr_x = { -1, -1, 0, 0 }, .arr_y = { -1, 0, 0, 1 } }, // S
-		{ .arr_x = { 0, 0, 1, 0 }, .arr_y = { -1, 0, 0, 1 } }, // T
-		{ .arr_x = { 0, 0, 1, 1 }, .arr_y = { 1, 0, 0, -1 } }, // Z
+		{ .arr_x = {  0,  0,  0,  0 }, .arr_y = { -1,  0,  1,  2 } }, // I
+		{ .arr_x = {  0,  0,  0,  1 }, .arr_y = {  1,  0, -1, -1 } }, // J
+		{ .arr_x = {  1,  0,  0,  0 }, .arr_y = {  1,  1,  0, -1 } }, // L
+		{ .arr_x = {  0,  1,  0,  1 }, .arr_y = {  0,  0,  1,  1 } }, // O
+		{ .arr_x = { -1, -1,  0,  0 }, .arr_y = { -1,  0,  0,  1 } }, // S
+		{ .arr_x = {  0,  0,  1,  0 }, .arr_y = { -1,  0,  0,  1 } }, // T
+		{ .arr_x = {  0,  0,  1,  1 }, .arr_y = {  1,  0,  0, -1 } }, // Z
 	}
 };
 
 static color_t piece_colors[NUM_PIECES+1] = 
 {
-	{ .fg = FG_BLACK, .bg = BG_GREEN, .blink = 0 },
-	{ .fg = FG_BLACK, .bg = BG_CYAN, .blink = 0 },
-	{ .fg = FG_BLACK, .bg = BG_BLUE, .blink = 0 },
-	{ .fg = FG_BLACK, .bg = BG_RED, .blink = 0 },
+	{ .fg = FG_BLACK, .bg = BG_GREEN,   .blink = 0 },
+	{ .fg = FG_BLACK, .bg = BG_CYAN,    .blink = 0 },
+	{ .fg = FG_BLACK, .bg = BG_BLUE,    .blink = 0 },
+	{ .fg = FG_BLACK, .bg = BG_RED,     .blink = 0 },
 	{ .fg = FG_BLACK, .bg = BG_MAGENTA, .blink = 0 },
-	{ .fg = FG_BLACK, .bg = BG_GREEN, .blink = 0 },
-	{ .fg = FG_BLACK, .bg = BG_BROWN, .blink = 0 },
-	{ .fg = FG_BLACK, .bg = BG_BLACK, .blink = 0 },
+	{ .fg = FG_BLACK, .bg = BG_GREEN,   .blink = 0 },
+	{ .fg = FG_BLACK, .bg = BG_BROWN,   .blink = 0 },
+	{ .fg = FG_BLACK, .bg = BG_BLACK,   .blink = 0 },
 };
 
 static piece_t gameboard[BOARD_X][BOARD_Y];
-static uint8_t quit = 0;
+static piece_t current_piece = P_I;
+static piece_t next_piece = P_I;
 static state_t state = SPAWN_BLOCK;
 static state_t state_pause_prev = SPAWN_BLOCK;
-static piece_t current_piece = P_I;
+static color_t background_color = { .fg = FG_BLACK, .bg = BG_BLACK, .blink = 0 };
+static color_t border_color = { .fg = FG_BLACK, .bg = BG_WHITE, .blink = 0 };
+static color_t score_color = { .fg = FG_WHITE, .bg = BG_BLACK, .blink = 0 };
+static color_t game_over_color = { .fg = FG_RED, .bg = BG_WHITE, .blink = 0 };
+static uint8_t quit = 0;
+static uint8_t full_lines[BOARD_Y];
 static uint8_t current_rotation = 0;
-static piece_t next_piece = P_I;
 static int32_t piece_origin_x = 0;
 static int32_t piece_origin_y = 0;
 static uint32_t ticks = 0;
 static uint32_t flash_ticks = 0;
 static uint32_t flash_count = 0;
 static uint32_t ticks_per_drop = TICKS_PER_SEC_DEFAULT;
-static color_t background_color = { .fg = FG_BLACK, .bg = BG_BLACK, .blink = 0 };
-static color_t border_color = { .fg = FG_BLACK, .bg = BG_WHITE, .blink = 0 };
-static color_t score_color = { .fg = FG_WHITE, .bg = BG_BLACK, .blink = 0 };
-static color_t game_over_color = { .fg = FG_RED, .bg = BG_WHITE, .blink = 0 };
 static uint64_t lines_cleared = 0;
-static uint8_t full_lines[BOARD_Y];
 static uint64_t score = 0;
 
 static void reset_tetris()
@@ -415,6 +415,7 @@ static uint8_t handle_actions()
 	else if (rotate_pressed &&
 			!check_collision(adjusted_origin_x, adjusted_origin_y, (current_rotation+1)&3, current_piece))
 	{
+		// Mod 4
 		current_rotation = (current_rotation + 1) & 3;
 	}
 	else if (drop_pressed)
@@ -698,12 +699,19 @@ void tetris()
 	draw_game_borders();
 
 	// Ask for a seed
-	const uint32_t key1 = read_key();
-	const uint32_t key2 = read_key();
-	const uint32_t key3 = read_key();
-	const uint32_t key4 = read_key();
+	const uint8_t key1 = read_key();
+	const uint8_t key2 = read_key();
+	const uint8_t key3 = read_key();
+	const uint8_t key4 = read_key();
 
-	seed(key1+key2+key3+key4);
+	// Create the seed for the random number generator
+	const uint64_t game_seed = 
+		(key1 << 24) | 
+		(key2 << 16) |
+		(key3 <<  8) |
+		(key4 <<  0);
+
+	seed(game_seed);
 
 	choose_piece();
 
