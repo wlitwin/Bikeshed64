@@ -30,4 +30,6 @@ typedef struct
 	uint64_t ss;
 } Context;
 
+extern void dump_context(Context* context);
+
 #endif

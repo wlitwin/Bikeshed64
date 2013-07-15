@@ -53,15 +53,25 @@ static void set_idt_entry(uint64_t index, interrupt_handler fn_ih)
 	const uint64_t fn_loc = (uint64_t)fn_ih;
 
 	idt[index].offset_L = fn_loc & 0xFFFF;
-	idt[index].segment_selector = GDT_CODE_SEG;
+	idt[index].segment_selector = CODE_SEG_64;
 	idt[index].ist = 0;
-	idt[index].flags = 0x8E;
+	// We didn't really define 0x80 anywhere, but it's the syscall interrupt
+	if (index != 0x80)
+	{
+		// Don't allow user land processes to use this interrupt
+		idt[index].flags = 0x8E;
+	}
+	else
+	{
+		// Allow user processes to use this interrupt
+		idt[index].flags = 0xEE;
+	}
 	idt[index].offset_H = (fn_loc >> 16) & 0xFFFF;
 	idt[index].offset_HH = (fn_loc >> 32) & 0xFFFFFFFF;
 	idt[index].reserved = 0;
 }
 
-static void dump_context(Context* context)
+void dump_context(Context* context)
 {
 	kprintf("CONTEXT DUMP:\n");
 	kprintf("RDI: 0x%x\n", context->rdi);

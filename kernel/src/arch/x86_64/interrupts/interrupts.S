@@ -69,7 +69,7 @@ isr_save:
 	movq	128(%rsp), %rbx
 
 	/* Change over to the kernel's stack */
-	movabs	$KERNEL_STACK_LOCATION - 0x80000, %rsp
+	movabs	$KERNEL_STACK_LOCATION, %rsp
 
 	/* Pass them as arguments to the handler
 	 * x86_64 calling convention on linux uses
