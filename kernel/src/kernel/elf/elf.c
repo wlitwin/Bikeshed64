@@ -11,6 +11,7 @@
 #ifdef BIKESHED_X86_64
 #include "arch/x86_64/virt_memory/physical.h"
 #include "arch/x86_64/interrupts/imports.h"
+#include "arch/x86_64/interrupts/tss.h"
 #endif
 
 ELF_Error elf_create_process(PCB* pcb, void* elf_file, void* page_table)
@@ -146,9 +147,6 @@ ELF_Error elf_create_process(PCB* pcb, void* elf_file, void* page_table)
 #ifdef BIKESHED_X86_64
 
 	// Okay now setup the stack
-	#define USER_STACK_LOCATION 0x2000000					
-	#define USER_STACK_SIZE 0x4000
-
 	uint64_t address = USER_STACK_LOCATION-USER_STACK_SIZE;
 	uint64_t memory_address;
 	for (uint64_t i = 0; i < 4; ++i)
@@ -164,19 +162,22 @@ ELF_Error elf_create_process(PCB* pcb, void* elf_file, void* page_table)
 		address += PAGE_SMALL_SIZE;
 	}
 
-	pcb->context = (Context*)(USER_STACK_LOCATION - sizeof(Context));
+	// Allocate a place for the user context
+	virt_map_page(page_table, CONTEXT_STACK_LOCATION, PG_FLAG_RW, PAGE_SMALL, &memory_address);
+
+	pcb->context = (Context*)(CONTEXT_STACK_LOCATION + CONTEXT_STACK_SIZE - sizeof(Context));
 	
 	// The last memory_address will be the top of the stack!
 	kprintf("Memory address: 0x%x\n", memory_address);
 	kprintf("Virt address: 0x%x\n", PHYS_TO_VIRT(memory_address));
-	Context* context = (Context*)PHYS_TO_VIRT(memory_address+0x1000-sizeof(Context));
+	Context* context = (Context*)PHYS_TO_VIRT(memory_address+CONTEXT_STACK_SIZE-sizeof(Context));
 	kprintf("Context address: 0x%x\n", context);
 	context->IP = elf_hdr->e_entry;
 	context->SP = USER_STACK_LOCATION;//-0x10;
 	context->BP = USER_STACK_LOCATION;
 	context->FLAGS = DEFAULT_EFLAGS;
-	context->cs = GDT_CODE_SEG;
-	context->ss = GDT_DATA_SEG;
+	context->cs = USER_CODE_SEG_64 | 3;
+	context->ss = USER_DATA_SEG_64 | 3;
 	/*context->rax = 0x12345678;
 	context->rbx = 0xABCDEF01;
 	context->rcx = 0xA0A0A0A0;

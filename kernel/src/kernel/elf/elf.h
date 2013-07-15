@@ -7,6 +7,11 @@
 
 #ifdef BIKESHED_X86_64
 #include "arch/x86_64/elf/imports.h"
+#define USER_STACK_LOCATION 0x2000000					
+#define USER_STACK_SIZE 0x4000
+
+#define CONTEXT_STACK_LOCATION (USER_STACK_LOCATION+0x1000)
+#define CONTEXT_STACK_SIZE PAGE_SMALL_SIZE
 #endif
 
 typedef uint64_t Elf64_Addr; // Unsigned program address
