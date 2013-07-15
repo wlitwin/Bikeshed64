@@ -1,5 +1,6 @@
 #include "tss.h"
 
+#include "safety.h"
 #include "kernel/klib.h" // memclr
 #include "arch/x86_64/virt_memory/physical.h"
 
@@ -43,8 +44,10 @@ static TSS kernel_TSS;
 extern TSS_Descriptor tss_seg_64;
 TSS_Descriptor* tss;
 
-void setup_tss_descriptor()
+static
+void setup_kernel_tss()
 {
+	// Setup the kernel TSS
 	const uint64_t tss_base = (uint64_t)&kernel_TSS;
 	const uint64_t tss_limit = sizeof(TSS);
 
@@ -61,10 +64,20 @@ void setup_tss_descriptor()
 
 	memclr(&kernel_TSS, sizeof(kernel_TSS));
 	kernel_TSS.io_map_base = 104;
-	kernel_TSS.rsp[0] = 0x80000;
-	kernel_TSS.ist[0] = 0x81000;
+	kernel_TSS.rsp[0] = KERNEL_STACK_LOCATION - 0x80000;
+	kernel_TSS.ist[0] = KERNEL_STACK_LOCATION;
+}
+
+void tss_set_context_stack(const uint64_t location)
+{
+	kernel_TSS.rsp[0] = location;
+}
+
+void setup_tss_descriptor()
+{
+	setup_kernel_tss();
 
 	// Load this new TSS
-	__asm__ volatile ("movw $0x30, %ax");
+	__asm__ volatile ("movw $" SX(TSS_SEG_64)  ", %ax");
 	__asm__ volatile ("ltr %ax");
 }

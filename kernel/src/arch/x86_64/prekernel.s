@@ -29,7 +29,7 @@ code_seg_64:
 	.hword 0
 	.hword 0
 	.byte 0
-	.byte 0b10011000
+	.byte 0b10011000 # DPL 0
 	.byte 0b00100000
 	.byte 0
 	# Align to 16-bytes
@@ -39,7 +39,27 @@ data_seg_64:
 	.hword 0xFFFF
 	.hword 0
 	.byte 0
-	.byte 0b10010010
+	.byte 0b10010010 # DPL 0
+	.byte 0b00000000
+	.byte 0
+	# Align to 16 bytes
+	.quad 0
+
+user_code_seg_64:
+	.hword 0
+	.hword 0
+	.byte 0
+	.byte 0b11111000 # DPL 3
+	.byte 0b00100000
+	.byte 0
+	# Align to 16-bytes
+	.quad 0
+
+user_data_seg_64:
+	.hword 0xFFFF
+	.hword 0
+	.byte 0
+	.byte 0b11110010 # DPL 3
 	.byte 0b00000000
 	.byte 0
 	# Align to 16 bytes
