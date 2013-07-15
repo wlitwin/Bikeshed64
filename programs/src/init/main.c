@@ -15,7 +15,7 @@ void main(void)
 		if (pid == 0)
 		{
 			// Idle process does nothing
-			while (1) { __asm__ volatile("hlt"); }
+			while (1);
 		}
 		else
 		{
@@ -29,6 +29,6 @@ void main(void)
 		text_mode_info.color.fg = FG_LIGHT_RED;
 		text_mode_info.color.bg = BG_BLACK;
 		text_mode_string("FAILED TO FORK!");
-		while (1) { __asm__ volatile ("hlt"); }
+		while (1);
 	}
 }
