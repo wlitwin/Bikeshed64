@@ -81,11 +81,11 @@ static void dump_context(Context* context)
 	kprintf("r15: 0x%x\n", context->r15);
 	kprintf("vec: 0x%x\n", context->vector);
 	kprintf("err: 0x%x\n", context->error_code);
-	kprintf("rip: 0x%x\n", context->rip);
 	kprintf("cs : 0x%x\n", context->cs);
 	kprintf("rfl: 0x%x\n", context->rflags);
 	kprintf("rsp: 0x%x\n", context->rsp);
 	kprintf("ss : 0x%x\n", context->ss);
+	kprintf("rip: 0x%x\n", context->rip);
 }
 
 static void default_handler(uint64_t vector, uint64_t code)
