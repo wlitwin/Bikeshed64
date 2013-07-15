@@ -627,28 +627,40 @@ static void update()
 			}
 			break;
 		case SHIFT_DOWN_BLOCKS:
-			// Erase the piece at the current location
-			draw_piece(piece_origin_x, piece_origin_y, current_rotation, current_piece, background_color);
-			if (handle_actions())
 			{
-				place_current_block_on_board();
-				state = LINE_CHECK;
-			}
+				const int32_t old_x = piece_origin_x;
+				const int32_t old_y = piece_origin_y;
+				const uint8_t old_rot = current_rotation;
 
-			++ticks;
-			if (ticks >= ticks_per_drop)
-			{
-				ticks = 0;
-
-				// Shift the current piece down
-				if (shift_down())
+				if (handle_actions())
 				{
-					// Collided
 					place_current_block_on_board();
 					state = LINE_CHECK;
 				}
+
+				++ticks;
+				if (ticks >= ticks_per_drop)
+				{
+					ticks = 0;
+
+					// Shift the current piece down
+					if (shift_down())
+					{
+						// Collided
+						place_current_block_on_board();
+						state = LINE_CHECK;
+					}
+				}
+
+				// Erase the piece at the current location
+				if (old_x != piece_origin_x 
+						|| old_y != piece_origin_y
+						|| old_rot != current_rotation)
+				{
+					draw_piece(old_x, old_y, old_rot, current_piece, background_color);
+					draw_current_piece();
+				}
 			}
-			draw_current_piece();
 			break;
 		case LINE_CHECK:
 			if (check_for_lines())
