@@ -8,6 +8,7 @@
 
 static void     _kprintf(const char* fmt, va_list ap);
 static void     padstr(const char* str, int64_t len, int64_t width, uint8_t leftadjust, char padchar);
+static int64_t  convert_binary(char buf[static BUFFER_LEN], uint64_t value);
 static int64_t  convert_hexidecimal(char buf[static BUFFER_LEN], uint64_t value);
 static int64_t  convert_decimal_u(char buf[static BUFFER_LEN], uint64_t value);
 static int64_t  convert_decimal(char buf[static BUFFER_LEN], int64_t value);
@@ -109,6 +110,13 @@ static void _kprintf(const char* fmt, va_list ap)
 					padstr(&buffer[idx], BUFFER_LEN-idx, width, leftadjust, padchar);
 				}
 				break;
+			case 'b':
+			case 'B':
+				{
+					int64_t idx = convert_binary(buffer, va_arg(ap, uint64_t));
+					padstr(&buffer[idx], BUFFER_LEN-idx, width, leftadjust, padchar);
+				}
+				break;
 			case 'o':
 			case 'O':
 				{
@@ -172,6 +180,7 @@ void padstr(const char* str, int64_t len, int64_t width, uint8_t leftadjust, cha
 	}
 }
 
+static
 const char* hexdigits = "0123456789ABCDEF";
 
 int64_t convert_hexidecimal(char buf[static BUFFER_LEN], uint64_t value)
@@ -181,6 +190,18 @@ int64_t convert_hexidecimal(char buf[static BUFFER_LEN], uint64_t value)
 	{
 		buf[index--] = hexdigits[value % 16];
 		value /= 16;
+	} while (index >= 0 && value != 0);
+
+	return index+1;
+}
+
+int64_t convert_binary(char buf[static BUFFER_LEN], uint64_t value)
+{
+	int64_t index = BUFFER_LEN-1;
+	do
+	{
+		buf[index--] = hexdigits[value % 2];
+		value /= 2;
 	} while (index >= 0 && value != 0);
 
 	return index+1;
