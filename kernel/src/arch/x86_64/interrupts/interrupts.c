@@ -128,10 +128,6 @@ static void serial_handler(uint64_t vector, uint64_t code)
 	// Do nothing
 	UNUSED(vector);
 	UNUSED(code);
-
-	//kprintf("SERIAL\n");
-	//__asm__ volatile("hlt");
-	//pic_acknowledge(vector);
 }
 
 static void spurious_handler(uint64_t vector, uint64_t code)
@@ -141,7 +137,7 @@ static void spurious_handler(uint64_t vector, uint64_t code)
 
 	kprintf("SPURIOUS\n");
 	__asm__ volatile("hlt");
-	//pic_acknowledge(vector);
+	pic_acknowledge(vector);
 }
 
 void interrupts_install_isr(uint64_t index, void handler(uint64_t, uint64_t))

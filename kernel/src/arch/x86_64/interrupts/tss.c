@@ -64,7 +64,7 @@ void setup_kernel_tss()
 
 	memclr(&kernel_TSS, sizeof(kernel_TSS));
 	kernel_TSS.io_map_base = 104;
-	kernel_TSS.rsp[0] = KERNEL_STACK_LOCATION - 0x80000;
+	kernel_TSS.rsp[0] = KERNEL_STACK_LOCATION;
 	kernel_TSS.ist[0] = KERNEL_STACK_LOCATION;
 }
 
