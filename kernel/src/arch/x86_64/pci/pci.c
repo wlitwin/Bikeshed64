@@ -303,6 +303,24 @@ const pci_config_t* pci_find_by_class(uint8_t base_class, uint8_t sub_class, uin
 	return NULL;
 }
 
+const pci_config_t* pci_find_custom(uint8_t (*func)(const pci_config_t*))
+{
+	list_element_t* node = list_head(&lst_pci_devices);
+
+	while (node != NULL)
+	{
+		pci_config_t* pci_info = (pci_config_t*)list_data(node);
+		if (func(pci_info))
+		{
+			return pci_info;
+		}
+
+		node = list_next(node);
+	}
+
+	return NULL;
+}
+
 const pci_config_t* pci_find_by_device(uint16_t vendor_id, uint16_t device_id)
 {
 	list_element_t* node = list_head(&lst_pci_devices);

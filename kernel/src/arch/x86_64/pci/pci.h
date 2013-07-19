@@ -14,6 +14,9 @@
 #define PCI_BIST 0xF
 #define PCI_CLASS_REVISION 0x08 /* Highest 24-bits are class, low are revision */
 
+#define PCI_CMD_MASTER 0x4
+#define PCI_CMD_MEMORY 0x2
+
 // The format of CONFIG_ADDRESS is the following:
 // bus << 16  |  device << 11  |  function <<  8  |  offset
 
@@ -207,6 +210,10 @@ const pci_config_t* pci_find_by_class(uint8_t base_class, uint8_t sub_class, uin
  * PCI bus
  */
 const pci_config_t* pci_find_by_device(uint16_t vendor_id, uint16_t device_id);
+
+/* Allow for a custom search function.
+ */
+const pci_config_t* pci_find_custom(uint8_t (*func)(const pci_config_t*));
 
 /* Find out how much memory a PCI device requires
  */
