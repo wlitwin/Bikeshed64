@@ -1,10 +1,19 @@
 #ifndef __INT_TYPES_H__
 #define __INT_TYPES_H__
 
+/* Defines integer types and verifies they conform the proper size
+ */
+
 #include "safety.h"
 
 #define NULL ((void*)0)
 
+/* Align to a boundary
+ *
+ * Parameters:
+ *    ADDR - The address to align
+ *    P2 - The power of two to align it to
+ */
 #define ALIGN(ADDR,P2) ((ADDR+P2-1) & ~(P2 - 1))
 
 typedef unsigned long uint64_t;
