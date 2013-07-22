@@ -8,17 +8,24 @@
 #include "arch/x86_64/virt_memory/paging.h"
 #include "arch/x86_64/interrupts/interrupts.h"
 
+#include "kernel/klib.h"
 #include "kernel/alloc/alloc.h"
 #include "kernel/data_structures/watermark.h"
 
+#define PCI_HDCTL 0x40
+#define HDA_TCSEL 0x44
+
 #define HDBARL 0x10
 #define HDBARU 0x14
-#define HDA_MEM_ENABLE 0x2
 #define GCAP 0x0
 #define GCTL (0x8/sizeof(uint32_t))
 #define WAKEEN (0xC/sizeof(uint16_t))
 #define STATESTS (0xE/sizeof(uint16_t))
 #define INTCTL (0x20/sizeof(uint32_t))
+#define IMM_CMD (0x60/sizeof(uint32_t))
+#define IMM_RESP (0x64/sizeof(uint32_t))
+#define IRS (0x68/sizeof(uint16_t))
+#define INTSTS (0x24/sizeof(uint32_t))
 
 #define CORBSIZE 0x4E
 #define CORBLBASE (0x40/sizeof(uint32_t))
@@ -34,7 +41,13 @@
 #define RIRBWP (0x58/sizeof(uint16_t))
 #define RIRBCTL 0x5C
 
-#define HDA_MEM_LOC 0xFFFFFFFFFE000000
+#define VERB_GET_PARAM 0xF00
+#define VERB_SET_POWER_STATE 0x705
+
+#define PARAM_VENDOR_ID 0x0
+
+#define HDA_MEM_LOC  0xFFFFFFFFF0000000
+#define HDA_RING_LOC 0xFFFFFFFFF0004000
 
 // Information taken from here:
 // http://www.intel.com/content/dam/www/public/us/en/documents/product-specifications/high-definition-audio-specification.pdf
@@ -207,11 +220,26 @@
 
 typedef struct
 {
-	uint64_t* base;
+	uint32_t* base;
 	uint64_t size;
+	uint64_t num_entries;
 } CORB;
 
-typedef CORB RIRB;
+typedef struct
+{
+	uint32_t response;
+	uint32_t resp_ex;
+} RIRB_Response;
+
+COMPILE_ASSERT(sizeof(RIRB_Response) == 8);
+
+typedef struct
+{
+	RIRB_Response* base;
+	uint64_t size;
+	uint64_t num_entries;
+	uint32_t read_ptr;
+} RIRB;
 
 static CORB hda_corb;
 static RIRB hda_rirb;
@@ -220,7 +248,7 @@ static RIRB hda_rirb;
 #define CORB_ALIGN 128
 #define CORB_DMA_RUN 0x2
 
-#define RIRB_ENT_SIZE 4
+#define RIRB_ENT_SIZE 8
 #define RIRB_ALIGN 128
 #define RIRB_DMA_RUN 0x2
 
@@ -230,35 +258,99 @@ static volatile uint16_t* hda_ptr_16 = (volatile uint16_t*) HDA_MEM_LOC;
 static volatile uint8_t*  hda_ptr_8  = (volatile uint8_t*)  HDA_MEM_LOC;
 static uint16_t codecs_available = 0;
 
-static void* hda_alloc_aligned(uint64_t size, uint64_t align)
+static void hda_disable_corb_dma()
 {
-	void* ptr = water_mark_alloc_align(&kernel_WaterMark, align, size);
-	ASSERT(ptr != NULL);
-	return ptr;
+	hda_ptr_8[CORBCTL] &= ~CORB_DMA_RUN;
+	while (hda_ptr_8[CORBCTL] & CORB_DMA_RUN);
 }
 
-static void hda_interrupt_handler(uint64_t vector, uint64_t code)
+static void hda_enable_corb_dma()
 {
-	UNUSED(vector);
-	UNUSED(code);
+	hda_ptr_8[CORBCTL] |= CORB_DMA_RUN;
+}
 
-	// Handle the interrupt
-	kprintf("HDA INT!\n");
+static void hda_disable_rirb_dma()
+{
+	hda_ptr_8[RIRBCTL] &= ~RIRB_DMA_RUN;
+	while (hda_ptr_8[RIRBCTL] & RIRB_DMA_RUN);
+}
+
+static void hda_enable_rirb_dma()
+{
+	hda_ptr_8[RIRBCTL] |= RIRB_DMA_RUN;
 }
 
 static void hda_reset_controller()
 {
-	hda_ptr_32[GCTL] &= ~0x1; // Put the controller into reset mode
+	// Make sure the DMA controllers are not running
+	hda_disable_corb_dma();
+	hda_disable_rirb_dma();
+
+	hda_ptr_32[GCTL] &= ~0x1;       // Put the controller into reset mode
 	while (hda_ptr_32[GCTL] & 0x1); // Wait for it to reset
-	hda_ptr_32[GCTL] |= 0x1;  // Enable the controller
-	while ((hda_ptr_32[GCTL] & 0x1) == 0); // Wait for the bit to be set
+	hda_ptr_32[GCTL] |= 0x1;        // Enable the controller
+	while ((hda_ptr_32[GCTL] & 0x1) == 0); // Wait for it to finish
 
-	// Check the WAKEEN register, state is saved across resets
-	hda_ptr_16[WAKEEN] &= ~0x7;
-
-	// Check the STATESTS register, state is saved across resets
-	//hda_ptr_16[STATESTS] &= ~0x7;
+	// The STATESTS register will be set with whatever codecs had a state
+	// change when the controller was reset. Meaning which codecs are present.
 	codecs_available = hda_ptr_16[STATESTS];
+
+	kprintf("Codecs available: 0b%b\n", codecs_available);
+}
+
+/* Figure out how much space is left in a ring buffer.
+ * Assumes that the readptr is always behind the writeptr.
+ *
+ * Returns:
+ *    How much space is left in the buffer based on the 
+ *    total buffer size, readptr and writeptr.
+ */
+static uint16_t ring_buffer_size(const uint16_t readptr, 
+		const uint16_t writeptr, const uint16_t size)
+{
+	// readptr == writeptr when buffer is empty	
+	// readptr is always behind the writeptr
+	if (readptr > writeptr)
+	{
+		return readptr - writeptr;
+	}
+	else
+	{
+		return size - (writeptr - readptr);
+	}
+}
+
+/* Check if the RIRB has any responses waiting to be read
+ *
+ * Returns:
+ *    1 - if a response is available, 0 otherwise
+ */
+static uint8_t rirb_has_responses()
+{
+	// Check if the current read ptr is different than the write pointer
+	return (hda_rirb.num_entries - ring_buffer_size(hda_rirb.read_ptr, 
+			hda_ptr_16[RIRBWP], hda_rirb.num_entries)) > 0;
+}
+
+/* Read a response from the RIRB. Assumes rirb_has_responses() was called
+ * prior to this method.
+ *
+ * Side Effects:
+ *    Increments the read pointer.
+ *
+ * Returns:
+ *    The response from the RIRB.
+ */
+static RIRB_Response rirb_read_response()
+{
+	// Hardware keeps writing to this so we just use our read ptr
+	// TODO - check to make sure things are in sync
+	uint32_t read_ptr = hda_rirb.read_ptr;
+	const RIRB_Response response = hda_rirb.base[read_ptr];
+	read_ptr = (read_ptr + 1) % hda_rirb.num_entries;
+	hda_rirb.read_ptr = read_ptr;
+
+	return response;
 }
 
 static void hda_setup_corb()
@@ -286,17 +378,21 @@ static void hda_setup_corb()
 		num_entries = 2;
 	}
 
+	kprintf("CORB SIZE: %u\n", num_entries);
+
 	// Allocate the buffer areas
 	hda_corb.size = num_entries*CORB_ENT_SIZE;
-	hda_corb.base = (uint64_t*)hda_alloc_aligned(hda_corb.size, CORB_ALIGN);
+	hda_corb.base = (uint32_t*)HDA_RING_LOC;
+	hda_corb.num_entries = num_entries;
 
 	// Make sure the CORB DMA engine is off
-	hda_ptr_8[CORBCTL] &= ~CORB_DMA_RUN;
-	while (hda_ptr_8[CORBCTL] & CORB_DMA_RUN);
+	hda_disable_corb_dma();
 
 	// Setup the other CORB registers
 	hda_ptr_32[CORBLBASE] = (uint64_t)hda_corb.base & 0xFFFFFFFF;	
 	hda_ptr_32[CORBUBASE] = ((uint64_t)hda_corb.base >> 32) & 0xFFFFFFFF;
+
+	kprintf("CORBL: 0x%x\nCORBU: 0x%x\n", hda_ptr_32[CORBLBASE], hda_ptr_32[CORBUBASE]);
 
 	// Reset the read pointer, need to set it, wait, then reset it
 	// and wait to verify that the reset was completed successfully
@@ -334,23 +430,142 @@ static void hda_setup_rirb()
 		num_entries = 2;
 	}
 
+	kprintf("RIRB SIZE: %u\n", num_entries);
+
 	// Allocate the buffer areas
 	hda_rirb.size = num_entries*RIRB_ENT_SIZE;
-	hda_rirb.base = (uint64_t*)hda_alloc_aligned(hda_rirb.size, RIRB_ALIGN);
+	hda_rirb.base = (RIRB_Response*)(HDA_RING_LOC+2048);
+	hda_rirb.num_entries = num_entries;
+	hda_rirb.read_ptr = 0;
 
 	// Make sure the RIRB DMA engine is off
-	hda_ptr_8[RIRBCTL] &= ~RIRB_DMA_RUN;
-	while (hda_ptr_8[RIRBCTL] & RIRB_DMA_RUN);
+	hda_disable_rirb_dma();
 
 	// Setup the other RIRB registers
 	hda_ptr_32[RIRBLBASE] = (uint64_t)hda_rirb.base & 0xFFFFFFFF;
 	hda_ptr_32[RIRBUBASE] = ((uint64_t)hda_rirb.base >> 32) & 0xFFFFFFFF;
 
+	kprintf("RIRBL: 0x%x\nRIRBU: 0x%x\n", hda_ptr_32[RIRBLBASE], hda_ptr_32[RIRBUBASE]);
+
 	// Clear the response count
-	hda_ptr_16[RINTCNT] &= ~0xF;
+	hda_ptr_16[RINTCNT] = 1;
 
 	// Reset the write pointer
 	hda_ptr_16[RIRBWP] |= 0x8000;
+}
+
+/* Sends a command to the corb. If there is no space available it will sit in
+ * a busy loop until space becomes available.
+ *
+ * Side Effects:
+ *    Increments the write pointer.
+ *    Stores command in CORB.
+ */
+static void corb_send_command(const uint32_t command)
+{
+	uint16_t corb_wp = hda_ptr_16[CORBWP];
+	uint16_t corb_rp = hda_ptr_16[CORBRP];
+
+	kprintf("\nWP: %u - RP: %u\n", corb_wp, corb_rp);
+
+	uint16_t space_left = ring_buffer_size(corb_rp, corb_wp, hda_corb.num_entries);
+
+	// TODO possibly send 0x0h commands occasionally for unsolicited responses
+	kprintf("CORB: space left: %u\n", space_left);
+
+	while (space_left < 1)
+	{
+		// Just idle, need better method
+		corb_rp = hda_ptr_16[CORBRP];
+		space_left = ring_buffer_size(corb_rp, corb_wp, hda_corb.num_entries);
+	}
+
+	corb_wp = (corb_wp + 1) % hda_corb.num_entries;	
+	hda_corb.base[corb_wp] = command;
+	hda_ptr_16[CORBWP] = corb_wp;
+
+	corb_wp = hda_ptr_16[CORBWP];
+	corb_rp = hda_ptr_16[CORBRP];
+
+	kprintf("WP: %u - RP: %u\n", corb_wp, corb_rp);
+}
+
+static uint32_t hda_send_immediate_command(uint32_t verb)
+{
+	// Wait for the immediate command to not be busy
+	while (hda_ptr_16[IRS] & 0x1);
+
+	// There was a response waiting, but we're going to clear it
+	// because it's for an older response
+	if (hda_ptr_16[IRS] & 0x2)
+	{
+		// Clear it
+		hda_ptr_16[IRS] |= 0x2;
+	}
+
+	// Put the command in the immediate command register
+	hda_ptr_32[IMM_CMD] = verb;	
+
+	kprintf("IRS 1: %u\n", hda_ptr_16[IRS]);
+
+	// Send the command
+	hda_ptr_16[IRS] |= 0x1;
+
+	kprintf("IRS 2: %u\n", hda_ptr_16[IRS]);
+	// Wait for the command to complete
+	while (hda_ptr_16[IRS] & 0x1);
+	while (!(hda_ptr_16[IRS] & 0x2));	
+
+	kprintf("IRS 3: %u\n", hda_ptr_16[IRS]);
+	// Read the response
+	const uint32_t response = hda_ptr_32[IMM_RESP];
+
+	// Clear the response bit
+	hda_ptr_16[IRS] |= 0x2;
+
+	kprintf("IRS 4: %u\n", hda_ptr_16[IRS]);
+
+	return response; 
+}
+
+static void hda_enumerate_codecs()
+{
+	uint8_t cad = 0;
+	for (int i = 0; i < 8; ++i)
+	{
+		if (codecs_available & (1 << i))
+		{
+			break;
+		}
+		++cad;
+	}
+
+	uint32_t verb = (cad << 28) | 0xF0000;
+	corb_send_command(verb);
+	while (!rirb_has_responses());
+	RIRB_Response resp = rirb_read_response();
+
+	kprintf("Response: 0x%x - 0x%x\n", 
+			resp.response, resp.resp_ex);
+
+	verb = (cad << 28) | 0xF0004;
+	corb_send_command(verb);
+	while (!rirb_has_responses());
+	resp = rirb_read_response();
+
+	kprintf("Response: 0x%x - 0x%x\n", 
+			resp.response, resp.resp_ex);
+}	
+
+static void hda_interrupt_handler(uint64_t vector, uint64_t error)
+{
+	UNUSED(vector);
+	UNUSED(error);
+
+	kprintf("GOT HDA INTERRUPT!\n");
+	__asm__ volatile("hlt");
+
+	//pic_acknowledge(vector);
 }
 
 static void hda_setup_streams()
@@ -358,10 +573,12 @@ static void hda_setup_streams()
 	// Read the GCAP register to see how many streams this device supports
 	const uint16_t gcap = hda_ptr_16[GCAP];
 
-	const uint8_t num_ouput_streams = (gcap >> 12) & 0xF;
+	const uint8_t num_output_streams = (gcap >> 12) & 0xF;
 	const uint8_t num_input_streams = (gcap >> 8)  & 0xF;
 
-	kprintf("Supports: %u output streams %u input streams\n", num_ouput_streams, num_input_streams);
+	ASSERT(num_output_streams >= 1);
+
+	kprintf("Supports: %u output streams %u input streams\n", num_output_streams, num_input_streams);
 
 	const uint8_t bdl_64_bit = gcap & 0x1;
 	kprintf("Supports 64-bit addressing: %u\n", bdl_64_bit);
@@ -369,11 +586,11 @@ static void hda_setup_streams()
 	// Setup the data buffers for the streams
 }
 
-static void hda_enable_interrupts()
+static uint8_t find_custom(const pci_config_t* config)
 {
-#define GIE 0x80000000
-#define CIE 0x40000000
-	hda_ptr_32[INTCTL] |= GIE | CIE;
+	return config->vendor_id == 0x8086 &&
+		   config->base_class == 0x4 &&
+		   config->sub_class == 0x3;
 }
 
 void sound_init()
@@ -382,61 +599,95 @@ void sound_init()
 	pci_init();
 
 	// Try to find the correct PCI device
-	pci_hda_config = pci_find_by_class(0x4, 0x3, 0x0);	
+	pci_hda_config = pci_find_custom(find_custom);
 	if (pci_hda_config == NULL)
 	{
 		panic("Failed to find HDA device");
 	}
+	ASSERT(pci_hda_config->header_type == 0);
+	const header_type_0* pci_hda_hdr = &pci_hda_config->h_type.type_0;
 
-	// We have the PCI device, now we have to map it somewhere
+	kprintf("Found PCI Device:\n");
+	kprintf("Vendor: 0x%x - Device: 0x%x - Rev: 0x%x\n",
+		pci_hda_config->vendor_id, pci_hda_config->device_id, pci_hda_config->revision);
+	kprintf("Subsytem Vendor: 0x%x - Subsystem ID: 0x%x\n",
+		pci_hda_hdr->subsystem_vendor_id, pci_hda_hdr->subsystem_id);
+	kprintf("Header Type: %d\n", pci_hda_config->header_type);
+	for (int i = 0; i < 6; ++i)
+	{
+		kprintf("BAR%d: 0x%x - Size: 0x%x\n", i, 
+				pci_hda_hdr->bar_address[i], pci_hda_hdr->bar_sizes[i]);
+	}
+	kprintf("Interrupt Line: %u\n", pci_hda_hdr->interrupt_line);
+	kprintf("Interrupt Pin: %u\n", pci_hda_hdr->interrupt_pin);
+
+	// Figure out the location
 	const uint32_t pci_addr_lo = pci_config_read_l(pci_hda_config, HDBARL);
 	const uint32_t pci_addr_hi = pci_config_read_l(pci_hda_config, HDBARU);
 
-	kprintf("HDA ADDR LO: 0x%x\n", pci_addr_lo);
-	kprintf("HDA ADDR HI: 0x%x\n", pci_addr_hi);
+	// Allocate space
+	ASSERT(PAGE_SMALL_SIZE == 0x1000);
+	ASSERT(pci_hda_hdr->bar_sizes[0] == 0x4000);
+	virt_map_phys_range(kernel_table, HDA_MEM_LOC, 
+			((uint64_t)pci_addr_hi << 32) | (pci_addr_lo & (~0xFFF)),
+			PG_FLAG_RW | PG_FLAG_PCD, PAGE_SMALL, 4);
+	virt_map_page(kernel_table, HDA_RING_LOC,
+			PG_FLAG_RW | PG_FLAG_PCD, PAGE_SMALL, NULL);
+	memclr((void*)HDA_RING_LOC, PAGE_SMALL_SIZE);
 
-	// Check if we can relocate anywhere in 64-bit address space
-	if ((pci_addr_lo & 0x4) > 0)
+	// Enable memory writes
+	uint32_t command = pci_config_read_w(pci_hda_config, PCI_COMMAND);
+	command |= PCI_CMD_MEMORY | PCI_CMD_MASTER;
+	pci_config_write_w(pci_hda_config, PCI_COMMAND, command);
+
+	// Make sure the interrupts are all set
+	const uint8_t interrupt_line = pci_hda_hdr->interrupt_line;			
+	ASSERT(interrupt_line <= 15);
+	if (interrupt_line >= 8)
 	{
-		kprintf("Can locate anywhere\n");
+		uint8_t old_mask = _inb(PIC_SLAVE_IMR_PORT);
+		kprintf("OLD S MASK: 0b%b\n", old_mask);
+		_outb(PIC_SLAVE_IMR_PORT, (~(1 << (interrupt_line - 8))) & old_mask);
+		kprintf("NEW S MASK: 0b%b\n", _inb(PIC_SLAVE_IMR_PORT));
 	}
 	else
 	{
-		kprintf("Only 32-bit addresses\n");
+		uint8_t old_mask = _inb(PIC_MASTER_IMR_PORT);
+		kprintf("OLD M MASK: 0b%b\n", old_mask);
+		_outb(PIC_MASTER_IMR_PORT, (~(1 << interrupt_line)) & old_mask);
+		kprintf("NEW M MASK: 0b%b\n", _inb(PIC_MASTER_IMR_PORT));
 	}
+	interrupts_install_isr(interrupt_line+0x20, hda_interrupt_handler);
 
-	// Map it somewhere
-	kprintf("Require 0x%x bytes\n", pci_hda_config->h_type.type_0.bar_sizes[0]);
-	ASSERT(pci_hda_config->h_type.type_0.bar_sizes[0] == 0x4000);
+	kprintf("Status: 0b%b\n", pci_config_read_w(pci_hda_config, PCI_STATUS));
+	kprintf("Command: 0b%b\n", pci_config_read_w(pci_hda_config, PCI_COMMAND));
 
-	// Choose this address for now, we don't really have a good way of giving 
-	// out virtual addresses yet...
-	ASSERT(PAGE_SMALL_SIZE == 0x1000);
-	virt_map_phys_range(kernel_table, HDA_MEM_LOC, pci_addr_lo, PG_FLAG_RW, PAGE_SMALL, 4);
-
-	// Now we can access the registers through this memory mapped address
-	// Tell the PCI device we're going to the memory mapped registers	
-	const uint16_t pci_cmd = pci_config_read_w(pci_hda_config, PCI_COMMAND);
-	pci_config_write_w(pci_hda_config, PCI_COMMAND, pci_cmd | HDA_MEM_ENABLE);
-
-	// Figure out what interrupt this device has been assigned to
-	kprintf("Interrupt on line: %u\n", pci_hda_config->h_type.type_0.interrupt_line);
-	const uint32_t actual_interrupt = pci_hda_config->h_type.type_0.interrupt_line+0x20;
-
-	interrupts_install_isr(actual_interrupt, hda_interrupt_handler);
-
-	// Now we need to enable the controller
+	// Reset the controller
 	hda_reset_controller();
 
-	// Enable interrupts from the controller
-	hda_enable_interrupts();	
-
-	// Initialize the CORB and RIRB
+	// Setup the ring buffers
 	hda_setup_corb();
 	hda_setup_rirb();
 
-	// Initialize streams
-	hda_setup_streams();
+	// Enable the DMA engines
+//	hda_enable_corb_dma();
+//	hda_enable_rirb_dma();
 
-	page_up();
+	// Figure out what we have
+//	hda_enumerate_codecs();
+
+	// Try a command
+	uint8_t cad = 0;
+	for (int i = 0; i < 8; ++i)
+	{
+		if (codecs_available & (1 << i))
+		{
+			break;
+		}
+		++cad;
+	}
+
+	uint32_t verb = (cad << 28) | 0xF0004;
+	uint32_t response = hda_send_immediate_command(verb);
+	kprintf("Response: 0x%x\n", response);
 }
