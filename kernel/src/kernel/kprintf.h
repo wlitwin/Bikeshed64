@@ -16,6 +16,7 @@
  * c     => Character
  * d     => Decimal number
  * u     => Unsigned decimal number
+ * b     => Binary number
  * s     => String
  * x     => Hexidecimal number
  * o     => Octal number

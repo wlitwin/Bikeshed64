@@ -1,6 +1,7 @@
 #include <stdarg.h>
-#include "inttypes.h"
 #include "panic.h"
+#include "safety.h"
+#include "inttypes.h"
 #include "arch/x86_64/serial.h"
 #include "arch/x86_64/textmode.h"
 
@@ -8,11 +9,8 @@
 
 static void     _kprintf(const char* fmt, va_list ap);
 static void     padstr(const char* str, int64_t len, int64_t width, uint8_t leftadjust, char padchar);
-static int64_t  convert_binary(char buf[static BUFFER_LEN], uint64_t value);
-static int64_t  convert_hexidecimal(char buf[static BUFFER_LEN], uint64_t value);
-static int64_t  convert_decimal_u(char buf[static BUFFER_LEN], uint64_t value);
+static int64_t  convert_radix(char buf[static BUFFER_LEN], uint8_t radix, uint64_t value);
 static int64_t  convert_decimal(char buf[static BUFFER_LEN], int64_t value);
-static int64_t  convert_octal(char buf[static BUFFER_LEN], uint64_t value);
 static uint64_t string_length(const char* str);
 
 void kprintf(const char* format, ...)
@@ -34,7 +32,6 @@ static void write_char(char c)
 static void _kprintf(const char* fmt, va_list ap)
 {
 	char buffer[BUFFER_LEN];
-
 
 	while (*fmt)
 	{
@@ -92,7 +89,7 @@ static void _kprintf(const char* fmt, va_list ap)
 			case 'u':
 			case 'U':
 				{
-					int64_t idx = convert_decimal_u(buffer, va_arg(ap, uint64_t));
+					int64_t idx = convert_radix(buffer, 10, va_arg(ap, uint64_t));
 					padstr(&buffer[idx], BUFFER_LEN-idx, width, leftadjust, padchar);
 				}
 				break;
@@ -106,21 +103,21 @@ static void _kprintf(const char* fmt, va_list ap)
 			case 'x':
 			case 'X':
 				{
-					int64_t idx = convert_hexidecimal(buffer, va_arg(ap, uint64_t));
+					int64_t idx = convert_radix(buffer, 16, va_arg(ap, uint64_t));
 					padstr(&buffer[idx], BUFFER_LEN-idx, width, leftadjust, padchar);
 				}
 				break;
 			case 'b':
 			case 'B':
 				{
-					int64_t idx = convert_binary(buffer, va_arg(ap, uint64_t));
+					int64_t idx = convert_radix(buffer, 2, va_arg(ap, uint64_t));
 					padstr(&buffer[idx], BUFFER_LEN-idx, width, leftadjust, padchar);
 				}
 				break;
 			case 'o':
 			case 'O':
 				{
-					int64_t idx = convert_octal(buffer, va_arg(ap, uint64_t));
+					int64_t idx = convert_radix(buffer, 8, va_arg(ap, uint64_t));
 					padstr(&buffer[idx], BUFFER_LEN-idx, width, leftadjust, padchar);
 				}
 				break;
@@ -183,39 +180,17 @@ void padstr(const char* str, int64_t len, int64_t width, uint8_t leftadjust, cha
 static
 const char* hexdigits = "0123456789ABCDEF";
 
-int64_t convert_hexidecimal(char buf[static BUFFER_LEN], uint64_t value)
+int64_t convert_radix(char buf[static BUFFER_LEN], uint8_t radix, uint64_t value)
 {
+	ASSERT(radix <= 16);
+
 	int64_t index = BUFFER_LEN-1;
 	do
 	{
-		buf[index--] = hexdigits[value % 16];
-		value /= 16;
-	} while (index >= 0 && value != 0);
-
-	return index+1;
-}
-
-int64_t convert_binary(char buf[static BUFFER_LEN], uint64_t value)
-{
-	int64_t index = BUFFER_LEN-1;
-	do
-	{
-		buf[index--] = hexdigits[value % 2];
-		value /= 2;
-	} while (index >= 0 && value != 0);
-
-	return index+1;
-}
-
-int64_t convert_decimal_u(char buf[static BUFFER_LEN], uint64_t value)
-{
-	int64_t index = BUFFER_LEN-1;
-
-	do	
-	{
-		buf[index--] = value % 10 + '0';
-		value /= 10;
-	} while (index >= 0 && value != 0);
+		buf[index--] = hexdigits[value % radix];
+		value /= radix;
+	}
+	while (index >= 0 && value != 0);
 
 	return index+1;
 }
@@ -244,19 +219,6 @@ int64_t convert_decimal(char buf[static BUFFER_LEN], int64_t value)
 		}
 		buf[index--] = '-';
 	}
-
-	return index+1;
-}
-
-int64_t convert_octal(char buf[static BUFFER_LEN], uint64_t value)
-{
-	int64_t index = BUFFER_LEN-1;
-	
-	do
-	{
-		buf[index--] = value % 8 + '0';
-		value /= 8;
-	} while (index >= 0 && value != 0);
 
 	return index+1;
 }
