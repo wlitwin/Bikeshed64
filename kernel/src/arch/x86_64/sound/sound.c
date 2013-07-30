@@ -65,6 +65,10 @@ static void hda_free(void* ptr)
 }
 
 //=============================================================================
+// hda_disable_corb_dma
+//
+// Disables the CORB DMA engine. This must be done before updating certain
+// registers otherwise a possible corrupt DMA transfer may happen.
 //=============================================================================
 static void hda_disable_corb_dma()
 {
@@ -73,6 +77,9 @@ static void hda_disable_corb_dma()
 }
 
 //=============================================================================
+// hda_enable_corb_dma
+//
+// Enables the CORB DMA engine.
 //=============================================================================
 static void hda_enable_corb_dma()
 {
@@ -80,6 +87,10 @@ static void hda_enable_corb_dma()
 }
 
 //=============================================================================
+// hda_disable_rirb_dma
+//
+// Disables the RIRB DMA engine. This must be done before updating certain
+// registers otherwise a possible corrupt DMA transfer may happen.
 //=============================================================================
 static void hda_disable_rirb_dma()
 {
@@ -88,6 +99,9 @@ static void hda_disable_rirb_dma()
 }
 
 //=============================================================================
+// hda_enable_rirb_dma
+//
+// Enables the RIRB DMA engine.
 //=============================================================================
 static void hda_enable_rirb_dma()
 {
@@ -95,6 +109,12 @@ static void hda_enable_rirb_dma()
 }
 
 //=============================================================================
+// hda_reset_controller
+//
+// Resets the HDA codec. It performs all the proper initialization steps. 
+// After this method has been called the codecs_available variable will hold
+// a bitmask of all the available codecs. The bit position is the codecs
+// address, so bit 0 == address 0, bit 1 == address 1, etc.
 //=============================================================================
 static void hda_reset_controller()
 {
@@ -114,14 +134,15 @@ static void hda_reset_controller()
 	kprintf("Codecs available: 0b%b\n", codecs_available);
 }
 
-/* Figure out how much space is left in a ring buffer.
- * Assumes that the readptr is always behind the writeptr.
- *
- * Returns:
- *    How much space is left in the buffer based on the 
- *    total buffer size, readptr and writeptr.
- */
 //=============================================================================
+// ring_buffer_size
+//
+// Figure out how much space is left in a ring buffer. Assumes that the 
+// readptr is always behind the writeptr.
+//
+// Returns:
+//   How much space is left in the buffer based on the total buffer size,
+//   readptr and writeptr
 //=============================================================================
 static uint16_t ring_buffer_size(const uint16_t readptr, 
 		const uint16_t writeptr, const uint16_t size)
@@ -138,13 +159,13 @@ static uint16_t ring_buffer_size(const uint16_t readptr,
 	}
 }
 
-
-/* Check if the RIRB has any responses waiting to be read
- *
- * Returns:
- *    1 - if a response is available, 0 otherwise
- */
 //=============================================================================
+// rirb_has_responses
+//
+// Check if the RIRB has any responses waiting to be read
+//
+// Returns:
+//   1 - if a response is available, 0 otherwise
 //=============================================================================
 static uint8_t rirb_has_responses()
 {
@@ -153,16 +174,14 @@ static uint8_t rirb_has_responses()
 			hda_ptr_16[RIRBWP], hda_rirb.num_entries)) > 0;
 }
 
-/* Read a response from the RIRB. Assumes rirb_has_responses() was called
- * prior to this method.
- *
- * Side Effects:
- *    Increments the read pointer.
- *
- * Returns:
- *    The response from the RIRB.
- */
 //=============================================================================
+// rirb_read_response
+//
+// Read a response from the RIRB. Assumes rirb_has_responses() was called 
+// prior to this method.
+//
+// Returns:
+//   The response from the RIRB
 //=============================================================================
 static RIRB_Response rirb_read_response()
 {
@@ -183,6 +202,10 @@ static RIRB_Response rirb_read_response()
 }
 
 //=============================================================================
+// hda_setup_corb
+//
+// Initializes the CORB registers and sets up the CORB so that it's ready to
+// accept commands. Before using the CORB make sure the DMA engines are on.
 //=============================================================================
 static void hda_setup_corb()
 {
@@ -239,6 +262,10 @@ static void hda_setup_corb()
 }
 
 //=============================================================================
+// hda_setup_rirb
+//
+// Initializes the RIRB registers and sets up the RIRB so that it's ready to
+// recieve commands. Before using the RIRB make sure the DMA engines are on.
 //=============================================================================
 static void hda_setup_rirb()
 {
@@ -295,14 +322,14 @@ static void hda_setup_rirb()
 	hda_ptr_8[RIRBCTL] |= 0x1; // Turn on RIRB interrupts
 }
 
-/* Sends a command to the corb. If there is no space available it will sit in
- * a busy loop until space becomes available.
- *
- * Side Effects:
- *    Increments the write pointer.
- *    Stores command in CORB.
- */
 //=============================================================================
+// corb_send_command
+//
+// Sends a command to the CORB. If there is no space availabe it will sit in
+// a busy loop until space becomes available.
+//
+// Parameters:
+//   command - The command to send to the codec
 //=============================================================================
 static void corb_send_command(const uint32_t command)
 {
@@ -334,6 +361,16 @@ static void corb_send_command(const uint32_t command)
 }
 
 //=============================================================================
+// poll_command
+//
+// A helper method to synchronously send a command to the codec. It waits 
+// until the codec has processed the request and then returns the result.
+//
+// Parameters:
+//   verb - The command to send to the CORB
+//
+// Returns:
+//   The response from the RIRB
 //=============================================================================
 static RIRB_Response poll_command(uint32_t verb)
 {
@@ -343,6 +380,16 @@ static RIRB_Response poll_command(uint32_t verb)
 }
 
 //=============================================================================
+// create_verb
+//
+// A helper method to create a command suitable for the CORB.
+//
+// Parameters:
+//   cad - The codec address
+//   d - Indirect node or direct node reference
+//   nid - The node
+//   verb - The verb/command
+//   data - The parameter for the verb
 //=============================================================================
 static uint32_t create_verb(uint32_t cad, uint32_t d, uint32_t nid,
 		uint32_t verb, uint32_t data)
@@ -355,6 +402,18 @@ static uint32_t create_verb(uint32_t cad, uint32_t d, uint32_t nid,
 }
 
 //=============================================================================
+// hda_send_immediate_command
+//
+// This uses the memory mapped registers to send and recieve a command from the
+// codec. These are not recommended for use by the manual and are really only
+// there for the BIOS. Also this method can only do 32-bit responses instead of
+// the full 64-bit responses that may be returned by some verbs.
+//
+// Parameters:
+//   verb - The verb/command to send
+//
+// Returns:
+//   The response from the codec
 //=============================================================================
 static uint32_t hda_send_immediate_command(uint32_t verb)
 {
@@ -395,6 +454,10 @@ static uint32_t hda_send_immediate_command(uint32_t verb)
 }
 
 //=============================================================================
+// hda_enable_interrupts
+//
+// Enable global and codec interrupts as well as RIRB interrupts. Does not
+// enable stream interrupts.
 //=============================================================================
 static void hda_enable_interrupts()
 {
@@ -406,6 +469,14 @@ static void hda_enable_interrupts()
 }
 
 //=============================================================================
+// read_audio_widget
+//
+// Helper method to read a bunch of information about an AudioFunctionGroup
+// widget.
+//
+// Parameters:
+//   afg - A pointer to the AudioFunctionGroup structure
+//   widget - The node ID of the widget to interrogate
 //=============================================================================
 static void read_audio_widget(AudioFunctionGroup* afg, uint32_t widget)
 {
@@ -594,6 +665,17 @@ static void read_audio_widget(AudioFunctionGroup* afg, uint32_t widget)
 }
 
 //=============================================================================
+// find_widget
+//
+// Loops through an AudioFunctionGroup and tries to find a widget with the
+// given node ID.
+//
+// Parameters:
+//   afg - The AudioFunctionGroup structure
+//   widget - The node ID of the widget
+//
+// Returns:
+//   An AudioWidget* or NULL if there is no widget with the given node ID
 //=============================================================================
 static AudioWidget* find_widget(AudioFunctionGroup* afg, uint32_t widget)
 {
@@ -614,6 +696,19 @@ static AudioWidget* find_widget(AudioFunctionGroup* afg, uint32_t widget)
 }
 
 //=============================================================================
+// hda_dfs
+//
+// This method is a very simple quick way of finding a path from a pin complex
+// to an audio converter. Right now it really only works for audio output 
+// converters.
+//
+// Parameters:
+//   path - The list that will store all of the nodes in the path
+//   afg - The AudioFunctionGroup structure
+//   aw - The current AudioWidget
+//
+// Returns:
+//   1 if successfully found a path from a port to a converter, 0 otherwise
 //=============================================================================
 #define AW_TYPE_OUT_CONV 0x0
 #define AW_TYPE_IN_CONV 0x1
@@ -656,6 +751,14 @@ static uint64_t hda_dfs(linked_list_t* path, AudioFunctionGroup* afg, AudioWidge
 }
 
 //=============================================================================
+// hda_setup_connections
+//
+// This method is meant to find or create connections from input/output ports
+// to audio converters. Right now it only really does anything useful with
+// audio output converters.
+//
+// Parameters:
+//   afg - The AudioFunctionGroup structure
 //=============================================================================
 static void hda_setup_connections(AudioFunctionGroup* afg)
 {
@@ -705,6 +808,10 @@ static void hda_setup_connections(AudioFunctionGroup* afg)
 }
 
 //=============================================================================
+// hda_enumerate_codecs
+//
+// This method enumerates all of the available codecs looking for an 
+// Audio Function Group (AFG) codec.
 //=============================================================================
 static void hda_enumerate_codecs()
 {
@@ -787,6 +894,9 @@ static void hda_enumerate_codecs()
 }	
 
 //=============================================================================
+// hda_interrupt_handler
+//
+// The interrupt handler for the HDA driver
 //=============================================================================
 static void hda_interrupt_handler(uint64_t vector, uint64_t error)
 {
@@ -800,6 +910,10 @@ static void hda_interrupt_handler(uint64_t vector, uint64_t error)
 }
 
 //=============================================================================
+// hda_setup_streams
+//
+// Creates a number of in memory buffers that can be used for transporting
+// sound and stream commands between the codec and OS.
 //=============================================================================
 static void hda_setup_streams()
 {
@@ -858,6 +972,11 @@ static void hda_setup_streams()
 }
 
 //=============================================================================
+// find_custom_first_pass
+//
+// This method tries to find PCI devices that are compatible with this HDA
+// driver. This method checks specific vendor and device id's. This is called
+// by the pci_find_custom() method.
 //=============================================================================
 static uint8_t find_custom_first_pass(const pci_config_t* config)
 {
@@ -868,6 +987,12 @@ static uint8_t find_custom_first_pass(const pci_config_t* config)
 }
 
 //=============================================================================
+// find_custom_second_pass
+//
+// This method uses a more generic way to find a PCI device that may be
+// compatible with this driver. It looks for a specific base class and sub
+// class that seem to appear on HDA hardware. This method is a backup to the
+// first one.
 //=============================================================================
 static uint8_t find_custom_second_pass(const pci_config_t* config)
 {
@@ -877,6 +1002,11 @@ static uint8_t find_custom_second_pass(const pci_config_t* config)
 }
 
 //=============================================================================
+// sound_init
+//
+// The starting point for the initialization of the HDA sound driver. It 
+// performs mapping of the PCI configuration space and calls all of the other
+// methods for setting up buffers and registers.
 //=============================================================================
 void sound_init()
 {
