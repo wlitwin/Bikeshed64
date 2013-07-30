@@ -1,3 +1,4 @@
+#include "hda.h"
 #include "sound.h"
 
 #include "arch/x86_64/textmode.h"
@@ -12,274 +13,89 @@
 #include "kernel/alloc/alloc.h"
 #include "kernel/data_structures/watermark.h"
 
-#define PCI_HDCTL 0x40
-#define HDA_TCSEL 0x44
-
-#define HDBARL 0x10
-#define HDBARU 0x14
-#define GCAP 0x0
-#define GCTL (0x8/sizeof(uint32_t))
-#define WAKEEN (0xC/sizeof(uint16_t))
-#define STATESTS (0xE/sizeof(uint16_t))
-#define INTCTL (0x20/sizeof(uint32_t))
-#define IMM_CMD (0x60/sizeof(uint32_t))
-#define IMM_RESP (0x64/sizeof(uint32_t))
-#define IRS (0x68/sizeof(uint16_t))
-#define INTSTS (0x24/sizeof(uint32_t))
-
-#define CORBSIZE 0x4E
-#define CORBLBASE (0x40/sizeof(uint32_t))
-#define CORBUBASE (0x44/sizeof(uint32_t))
-#define CORBWP (0x48/sizeof(uint16_t))
-#define CORBRP (0x4A/sizeof(uint16_t))
-#define CORBCTL 0x4C
-
-#define RIRBSIZE 0x5E
-#define RIRBLBASE (0x50/sizeof(uint32_t))
-#define RIRBUBASE (0x54/sizeof(uint32_t))
-#define RINTCNT (0x5A/sizeof(uint16_t))
-#define RIRBWP (0x58/sizeof(uint16_t))
-#define RIRBCTL 0x5C
-
-#define VERB_GET_PARAM 0xF00
-#define VERB_SET_POWER_STATE 0x705
-
-#define PARAM_VENDOR_ID 0x0
-
-#define HDA_MEM_LOC  0xFFFFFFFFF0000000
-#define HDA_RING_LOC 0xFFFFFFFFF0004000
-
-// Information taken from here:
-// http://www.intel.com/content/dam/www/public/us/en/documents/product-specifications/high-definition-audio-specification.pdf
-
-// DMA position must be aligned to a 128-byte boundary (bottom 7-bits 0)
-// 
-// struct stream_pos
-// {
-//    uint32_t position;
-//    uint32_t reserved;
-// }
-//
-// struct DMA_Pos
-// {
-//    struct stream_pos s_pos[num_streams];
-// }
-
-// Buffer Descriptor List (BDL), must be at least 2 entries, max of 256
-// must be aligned to a 128-byte boundary. Should not be modified unless
-// the run bit is 0
-//
-// BDLEs must start on a 128-byte boundary, and length must be an integer
-// number of words
-//
-// struct BDL_Entry
-// {
-//    uint64_t address; // 64-bit address of the buffer
-//    uint32_t length;  // 32-bit length of the buffer (bytes) must be >= 1 word
-//    uint32_t ioc;     // High bit = interrupt on completion, low bits reserved
-// }
-//
-// struct BDL
-// {
-//    BDL_Entry entries[num_bdles];
-// }
-
-// Command Output Ring Buffer (CORB). Length == CORBSIZE register. Must start
-// on a 128-byte boundary
-//
-// Codec verbs:
-//     31:28    -  27:20  -   19:0
-//   Codec Addr - Node Id - Verb Payload
-//
-// struct CORB
-// {
-//    uint32_t verb[num_verbs];
-// }
-
-// Response Input Ring Buffer (RIRB). Length == RIRBSIZE register. Must start
-// on a 128-byte boundary
-//
-// Solicited Response:
-//     31:0
-//   Response
-//
-// Unsolicited Response:
-//     31:26 -  25:21  -        20:0
-//      Tag  - Sub Tag - Vendor Specific Contents
-//
-// struct Response
-// {
-//    uint32_t resp;
-//    uint32_t resp_extended;
-// }
-//
-// struct RIRB
-// {
-//    struct Response resp[num_responses];
-// }
-
-// Stream Format Structure - Does not appear in memory
-// Bits  - Meaning
-//  15   - Type
-//  14   - Sample Rate Base
-// 13:11 - Sample Base Rate Multiple
-// 10:8  - Sample Base Rate Divisor
-//   7   - Reserved
-//  6:4  - Bits per sample
-//  3:0  - Number of channels
-
-// Initialization
-// ==============
-// When the controller is reset the CRST (offset 0x8, bit 0) bit will be 0. When
-// a 1 is written to it it will start, software should then wait until it's set
-// to 1 before continuing.
-//
-// Check the WAKEEN, STATESTS and ther RSM registers as they maintain state across
-// power resets
-//
-// Codec Discovery
-// ===============
-// STATESTS bits will be set to indicate addresses of the codecs present
-//
-// Software must wait 521us after reading CRST as a 1 before assuming all the
-// codecs have been registered.
-//
-// Can use CIE bit in INTCTL register to be notified when status has changed
-//
-// Codec Command and Control
-// =========================
-// Configure the CORB and RIRB buffers
-//
-// CORB - Size of the CORB is programmable to 2, 16, or 256 entries using the 
-//        CORBSIZE controller register. Choose based on CORBSZCAP field. Generally
-//        choose the 256 option.
-//
-//        Hardware maintains two pointers. Write Pointer (WP) and Read Pointer (RP)
-//        WP = (set by software) last valid command in CORB
-//        RP = (set by hardware) last command fetched in CORB
-//        Both measure the offset into the buffer, need to multiply by 4
-//
-// Add commands into the CORB by (WP+1)*4, then update WP. When first initialized
-// WP = 0, so first command is (0+1)*4 = 4, and then WP = 1
-//
-// First make sure the CORBRUN bit in CORBCTL is 0
-// CORBBASE = base of allocated memory
-// use CORBRPRST bit to clear RP
-// write 0 to WP
-//
-// RIRB - Size of RIRB is programmable to 2, 16, or 256 entries. Must be aligned
-//        to 128-byte boundary. There is no RP register, software must maintain
-//        this. WP is kept in hardware to indicate the last response written.
-//
-//        Two ways software can be notified of a response. First is by interrupt
-//        after N responses, or when an empty response slot is found.
-//
-//        Initialize the RIRB - set RIRBSIZE, RIRBUBASE, RIRBLBASE
-
-// Stream Management
-// =================
-// Connects codec with system memory, 1 stream = 1 DMA
-//
-// Samples are left-justified (LSBs are 0) smallest container which fits the
-// sample are used (so 24-bit sample = 32-bit container). Samples must be
-// naturally aligned in memory.
-//
-// Block - set of samples to be rendered at one point in time. A block has a
-//         size of (container size * number of channels)
-//
-// Standard output rate is 48kHz. Multiple blocks to be transmitted at a time
-// are organized into packets. Packets are collected in memory into buffers,
-// which are commonly a whole page of memory. Each buffer must have an integer
-// number of samples. But blocks and packets can be split across multiple buffers.
-//
-// Starting Streams
-// ================
-// Determine stream parameters - sample rate, bit depth, number of channels
-//
-// Data buffer + BDL allocated. Setup BDL appropriately.
-//
-// Stopping Streams
-// ================
-// Write a 0 to the RUN bit in the stream descriptor. This bit will not 
-// immediately transition to 0. Rather, the DMA engine will stop on the next
-// frame ~40us.
-//
-// Resuming Streams
-// ================
-// Set the run bit back to 1. First check to make sure it's 0.
-//
-// Getting Data
-// ============
-// Can use interrupts to know when the streams have finished or require reading.
-//
-// ISR - Should only use byte access to read or write the Status register.
-//       Should not attempt to write to the stream control register.
-
-// Discovering Codecs
-// ==================
-
-typedef struct
-{
-	uint32_t* base;
-	uint64_t size;
-	uint64_t num_entries;
-} CORB;
-
-typedef struct
-{
-	uint32_t response;
-	uint32_t resp_ex;
-} RIRB_Response;
-
-COMPILE_ASSERT(sizeof(RIRB_Response) == 8);
-
-typedef struct
-{
-	RIRB_Response* base;
-	uint64_t size;
-	uint64_t num_entries;
-	uint32_t read_ptr;
-} RIRB;
-
 static CORB hda_corb;
 static RIRB hda_rirb;
 
-#define CORB_ENT_SIZE 4
-#define CORB_ALIGN 128
-#define CORB_DMA_RUN 0x2
+static AudioFunctionGroup hda_afg;
+static linked_list_t hda_lst_streams;
 
-#define RIRB_ENT_SIZE 8
-#define RIRB_ALIGN 128
-#define RIRB_DMA_RUN 0x2
-
-const pci_config_t* pci_hda_config;
+static uint64_t dma_base_addresses[8];
+static uint64_t hda_dma_phys_loc = 0;
+static uint64_t hda_ring_phys_loc = 0;
+static const pci_config_t* pci_hda_config;
 static volatile uint32_t* hda_ptr_32 = (volatile uint32_t*) HDA_MEM_LOC;
 static volatile uint16_t* hda_ptr_16 = (volatile uint16_t*) HDA_MEM_LOC;
 static volatile uint8_t*  hda_ptr_8  = (volatile uint8_t*)  HDA_MEM_LOC;
 static uint16_t codecs_available = 0;
 
+//=============================================================================
+// hda_alloc
+//
+// Allocates permanent memory for the driver. This memory is not meant to be
+// free'd, so only use it for memory that should stick around the whole time
+// the OS is running. Primarily used for the linked_list_t structure.
+//
+// Parameters:
+//   size - The number of bytes to allocate
+//
+// Returns:
+//   A pointer to the allocated memory, or NULL if could not allocate memory 
+//=============================================================================
+static void* hda_alloc(const uint64_t size)
+{
+	void* ptr = water_mark_alloc(&kernel_WaterMark, size);	
+	ASSERT(ptr != NULL);
+	return ptr;
+}
+
+//=============================================================================
+// hda_free
+//
+// This method is not meant to be used and if called it will cause a kernel
+// panic. This is only here because the linked_list_t initialization routine
+// requires a pointer to a free function.
+//
+// Parameters:
+//   ptr - Not used
+//=============================================================================
+static void hda_free(void* ptr)
+{
+	UNUSED(ptr);
+	panic("Tried to free an HDA element");
+}
+
+//=============================================================================
+//=============================================================================
 static void hda_disable_corb_dma()
 {
 	hda_ptr_8[CORBCTL] &= ~CORB_DMA_RUN;
 	while (hda_ptr_8[CORBCTL] & CORB_DMA_RUN);
 }
 
+//=============================================================================
+//=============================================================================
 static void hda_enable_corb_dma()
 {
 	hda_ptr_8[CORBCTL] |= CORB_DMA_RUN;
 }
 
+//=============================================================================
+//=============================================================================
 static void hda_disable_rirb_dma()
 {
 	hda_ptr_8[RIRBCTL] &= ~RIRB_DMA_RUN;
 	while (hda_ptr_8[RIRBCTL] & RIRB_DMA_RUN);
 }
 
+//=============================================================================
+//=============================================================================
 static void hda_enable_rirb_dma()
 {
 	hda_ptr_8[RIRBCTL] |= RIRB_DMA_RUN;
 }
 
+//=============================================================================
+//=============================================================================
 static void hda_reset_controller()
 {
 	// Make sure the DMA controllers are not running
@@ -305,6 +121,8 @@ static void hda_reset_controller()
  *    How much space is left in the buffer based on the 
  *    total buffer size, readptr and writeptr.
  */
+//=============================================================================
+//=============================================================================
 static uint16_t ring_buffer_size(const uint16_t readptr, 
 		const uint16_t writeptr, const uint16_t size)
 {
@@ -320,11 +138,14 @@ static uint16_t ring_buffer_size(const uint16_t readptr,
 	}
 }
 
+
 /* Check if the RIRB has any responses waiting to be read
  *
  * Returns:
  *    1 - if a response is available, 0 otherwise
  */
+//=============================================================================
+//=============================================================================
 static uint8_t rirb_has_responses()
 {
 	// Check if the current read ptr is different than the write pointer
@@ -341,20 +162,35 @@ static uint8_t rirb_has_responses()
  * Returns:
  *    The response from the RIRB.
  */
+//=============================================================================
+//=============================================================================
 static RIRB_Response rirb_read_response()
 {
 	// Hardware keeps writing to this so we just use our read ptr
 	// TODO - check to make sure things are in sync
+	
+	if (hda_ptr_8[RIRBSTS] & 0x1)
+	{
+		hda_ptr_8[RIRBSTS] |= 0x1;
+	}
+
 	uint32_t read_ptr = hda_rirb.read_ptr;
-	const RIRB_Response response = hda_rirb.base[read_ptr];
 	read_ptr = (read_ptr + 1) % hda_rirb.num_entries;
+	const RIRB_Response response = hda_rirb.base[read_ptr];
 	hda_rirb.read_ptr = read_ptr;
 
 	return response;
 }
 
+//=============================================================================
+//=============================================================================
 static void hda_setup_corb()
 {
+	kprintf("CORBSZ: 0x%x\n", hda_ptr_8[CORBSIZE]);
+
+	// Make sure the CORB DMA engine is off
+	hda_disable_corb_dma();
+
 	// Read the and set CORB capability	register
 	const uint8_t supported_size = hda_ptr_8[CORBSIZE] >> 4;
 
@@ -385,12 +221,9 @@ static void hda_setup_corb()
 	hda_corb.base = (uint32_t*)HDA_RING_LOC;
 	hda_corb.num_entries = num_entries;
 
-	// Make sure the CORB DMA engine is off
-	hda_disable_corb_dma();
-
 	// Setup the other CORB registers
-	hda_ptr_32[CORBLBASE] = (uint64_t)hda_corb.base & 0xFFFFFFFF;	
-	hda_ptr_32[CORBUBASE] = ((uint64_t)hda_corb.base >> 32) & 0xFFFFFFFF;
+	hda_ptr_32[CORBLBASE] = (uint64_t)hda_ring_phys_loc & 0xFFFFFFFF;	
+	hda_ptr_32[CORBUBASE] = ((uint64_t)hda_ring_phys_loc >> 32) & 0xFFFFFFFF;
 
 	kprintf("CORBL: 0x%x\nCORBU: 0x%x\n", hda_ptr_32[CORBLBASE], hda_ptr_32[CORBUBASE]);
 
@@ -405,11 +238,18 @@ static void hda_setup_corb()
 	hda_ptr_16[CORBWP] = 0;
 }
 
+//=============================================================================
+//=============================================================================
 static void hda_setup_rirb()
 {
+	kprintf("RIRBSZ: 0x%x\n", hda_ptr_8[RIRBSIZE]);
+
+	// Make sure the RIRB DMA engine is off
+	hda_disable_rirb_dma();
+	
 	// Read and set the RIRB capability register
 	const uint8_t supported_size = hda_ptr_8[RIRBSIZE] >> 4;
-	
+
 	uint32_t num_entries = 0;
 	if (supported_size & 0x4)
 	{
@@ -438,20 +278,21 @@ static void hda_setup_rirb()
 	hda_rirb.num_entries = num_entries;
 	hda_rirb.read_ptr = 0;
 
-	// Make sure the RIRB DMA engine is off
-	hda_disable_rirb_dma();
-
 	// Setup the other RIRB registers
-	hda_ptr_32[RIRBLBASE] = (uint64_t)hda_rirb.base & 0xFFFFFFFF;
-	hda_ptr_32[RIRBUBASE] = ((uint64_t)hda_rirb.base >> 32) & 0xFFFFFFFF;
+	const uint64_t rirb_loc = hda_ring_phys_loc + 2048;
+	hda_ptr_32[RIRBLBASE] = (uint64_t)rirb_loc & 0xFFFFFFFF;
+	hda_ptr_32[RIRBUBASE] = ((uint64_t)rirb_loc >> 32) & 0xFFFFFFFF;
 
 	kprintf("RIRBL: 0x%x\nRIRBU: 0x%x\n", hda_ptr_32[RIRBLBASE], hda_ptr_32[RIRBUBASE]);
+	kprintf("RIRB BASE: 0x%x\n", hda_rirb.base);
 
-	// Clear the response count
+	// Set the number of responses before an interrupt
 	hda_ptr_16[RINTCNT] = 1;
 
 	// Reset the write pointer
 	hda_ptr_16[RIRBWP] |= 0x8000;
+
+	hda_ptr_8[RIRBCTL] |= 0x1; // Turn on RIRB interrupts
 }
 
 /* Sends a command to the corb. If there is no space available it will sit in
@@ -461,35 +302,60 @@ static void hda_setup_rirb()
  *    Increments the write pointer.
  *    Stores command in CORB.
  */
+//=============================================================================
+//=============================================================================
 static void corb_send_command(const uint32_t command)
 {
-	uint16_t corb_wp = hda_ptr_16[CORBWP];
-	uint16_t corb_rp = hda_ptr_16[CORBRP];
+	uint16_t corb_wp = hda_ptr_16[CORBWP] & 0xFF;
+	uint16_t corb_rp = hda_ptr_16[CORBRP] & 0xFF;
 
-	kprintf("\nWP: %u - RP: %u\n", corb_wp, corb_rp);
+//	kprintf("\nWP: %u - RP: %u RIRBWP %u\n", corb_wp, corb_rp, hda_ptr_16[RIRBWP]);
 
 	uint16_t space_left = ring_buffer_size(corb_rp, corb_wp, hda_corb.num_entries);
 
 	// TODO possibly send 0x0h commands occasionally for unsolicited responses
-	kprintf("CORB: space left: %u\n", space_left);
+//	kprintf("CORB: space left: %u\n", space_left);
 
 	while (space_left < 1)
 	{
 		// Just idle, need better method
-		corb_rp = hda_ptr_16[CORBRP];
+		corb_rp = hda_ptr_16[CORBRP] & 0xFF;
 		space_left = ring_buffer_size(corb_rp, corb_wp, hda_corb.num_entries);
 	}
 
 	corb_wp = (corb_wp + 1) % hda_corb.num_entries;	
 	hda_corb.base[corb_wp] = command;
-	hda_ptr_16[CORBWP] = corb_wp;
+	hda_ptr_16[CORBWP] = corb_wp & 0xFF;
 
-	corb_wp = hda_ptr_16[CORBWP];
-	corb_rp = hda_ptr_16[CORBRP];
+//	corb_wp = hda_ptr_16[CORBWP];
+//	corb_rp = hda_ptr_16[CORBRP];
 
-	kprintf("WP: %u - RP: %u\n", corb_wp, corb_rp);
+//	kprintf("WP: %u - RP: %u\n", corb_wp, corb_rp);
 }
 
+//=============================================================================
+//=============================================================================
+static RIRB_Response poll_command(uint32_t verb)
+{
+	corb_send_command(verb);
+	while (!rirb_has_responses());
+	return rirb_read_response();
+}
+
+//=============================================================================
+//=============================================================================
+static uint32_t create_verb(uint32_t cad, uint32_t d, uint32_t nid,
+		uint32_t verb, uint32_t data)
+{
+	return (cad << 28) 
+		| (d << 27) 
+		| (nid << 20) 
+		| (verb << 8) 
+		| (data & 0xFFFF);
+}
+
+//=============================================================================
+//=============================================================================
 static uint32_t hda_send_immediate_command(uint32_t verb)
 {
 	// Wait for the immediate command to not be busy
@@ -528,35 +394,400 @@ static uint32_t hda_send_immediate_command(uint32_t verb)
 	return response; 
 }
 
-static void hda_enumerate_codecs()
+//=============================================================================
+//=============================================================================
+static void hda_enable_interrupts()
 {
-	uint8_t cad = 0;
-	for (int i = 0; i < 8; ++i)
+#define GIE 0x80000000
+#define CIE 0x40000000
+	hda_ptr_32[INTCTL] |= GIE | CIE;
+
+	hda_ptr_8[RIRBCTL] |= 0x1;
+}
+
+//=============================================================================
+//=============================================================================
+static void read_audio_widget(AudioFunctionGroup* afg, uint32_t widget)
+{
+	uint32_t verb = create_verb(afg->codec, 0, widget, 0xF00, 9);
+	RIRB_Response resp = poll_command(verb);	
+	uint32_t info = resp.response;
+
+	kprintf("\nAudio Widget CAP: %d - 0x%x - 0x%x\n", widget, 
+			resp.response, resp.resp_ex);
+
+	AudioWidget* aw = (AudioWidget*)hda_alloc(sizeof(AudioWidget));
+
+	// Set the widget's node
+	aw->node = widget;
+
+	// Read the capabilities
+	aw->type               = (info >> 20) & 0xF;
+	aw->delay              = (info >> 16) & 0xF;
+	aw->channel_count      = ((((info >> 13) & 0x7) << 1) | (info & 0x1)) + 1;
+	aw->cp_caps            = (info >> 12) & 0x1;
+	aw->lr_swap            = (info >> 11) & 0x1;
+	aw->power_control      = (info >> 10) & 0x1;
+	aw->digital            = (info >> 9) & 0x1;
+	aw->conn_list          = (info >> 8) & 0x1;
+	aw->unsolicit_cap      = (info >> 7) & 0x1;
+	aw->processing_widget  = (info >> 6) & 0x1;
+	aw->stripe             = (info >> 5) & 0x1;
+	aw->format_override    = (info >> 4) & 0x1;
+	aw->amp_param_override = (info >> 3) & 0x1;
+	aw->out_amp_present    = (info >> 2) & 0x1;
+	aw->in_amp_present     = (info >> 1) & 0x1;
+
+	const char* types[16] = {
+		"Audio Output", "Audio Input", "Audio Mixer", "Audio Selector",
+		"Pin Complex", "Power Widget", "Volume Knob Widget", "Beep Generator",
+		"Reserved", "Reserved", "Reserved", "Reserved", "Reserved", "Reserved",
+		"Reserved", "Vendor Defined",
+	};
+
+	kprintf("Type: %s\n", types[aw->type]);
+
+	// Read the pin capabilities
+	verb = create_verb(afg->codec, 0, widget, 0xF00, 0xC);
+	resp = poll_command(verb);
+	info = resp.response;
+	kprintf("Audio Widget PCAP: %d - 0x%x - 0x%x\n", widget, 
+			resp.response, resp.resp_ex);
+//#define AW_TYPE_PIN 0x4
+//#define AW_TYPE_IN_AMP 0x1
+//#define AW_TYPE_OUT_AMP 0x0
+
+	aw->pin_caps.high_bit_rate       = (info >> 27) & 0x1;
+	aw->pin_caps.display_port        = (info >> 24) & 0x1;
+	aw->pin_caps.eapd_capable        = (info >> 16) & 0x1;
+	aw->pin_caps.vref_control        = (info >> 8) & 0xFF;
+	aw->pin_caps.hdmi                = (info >> 7) & 0x1;
+	aw->pin_caps.balanced_io         = (info >> 6) & 0x1;
+	aw->pin_caps.input_capable       = (info >> 5) & 0x1;
+	aw->pin_caps.output_capable      = (info >> 4) & 0x1;
+	aw->pin_caps.headphone_drive_cap = (info >> 3) & 0x1;
+	aw->pin_caps.presence_detectable = (info >> 2) & 0x1;
+	aw->pin_caps.trigger_required    = (info >> 1) & 0x1;
+	aw->pin_caps.imped_sense_capable = info & 0x1;
+
+	// Get the input amplifier capabilities of this node
+	verb = create_verb(afg->codec, 0, widget, 0xF00, 0xD);	
+	resp = poll_command(verb);
+	info = resp.response;
+
+	kprintf("Audio Widget ICAP: %d - 0x%x - 0x%x\n", widget, 
+			resp.response, resp.resp_ex);
+
+	aw->in_amp_caps.mute_capable = (info >> 31) & 0x1;
+	aw->in_amp_caps.step_size    = (info >> 16) & 0x7F;
+	aw->in_amp_caps.num_steps    = (info >> 8) & 0x7F;
+	aw->in_amp_caps.offset       = info & 0x3F;
+
+	// Get the output amplifier capabilities of this node
+	verb = create_verb(afg->codec, 0, widget, 0xF00, 0x12);
+	resp = poll_command(verb);
+	info = resp.response;
+
+	kprintf("Audio Widget OCAP: %d - 0x%x - 0x%x\n", widget, 
+			resp.response, resp.resp_ex);
+
+	aw->out_amp_caps.mute_capable = (info >> 31) & 0x1;
+	aw->out_amp_caps.step_size    = (info >> 16) & 0x7F;
+	aw->out_amp_caps.num_steps    = (info >> 8) & 0x7F;
+	aw->out_amp_caps.offset       = info & 0x3F;
+
+	// Get the connection list length
+	verb = create_verb(afg->codec, 0, widget, 0xF00, 0xE);
+	resp = poll_command(verb);
+	info = resp.response;
+
+	kprintf("Audio Widget CLST: %d - 0x%x - 0x%x\n", widget, 
+			resp.response, resp.resp_ex);
+
+	aw->conn_info.long_form = (info >> 7) & 0x1;
+	aw->conn_info.length    = info & 0x7F;
+
+	list_init(&aw->conn_info.lst_conn, hda_alloc, hda_free);
+
+	if (aw->conn_info.length > 0)
 	{
-		if (codecs_available & (1 << i))
+		kprintf("Conn List:\n");
+		// Get all of the connections
+		for (uint32_t n = 0; n < aw->conn_info.length; )
 		{
-			break;
+			verb = create_verb(afg->codec, 0, widget, 0xF02, n);
+			resp = poll_command(verb);
+			info = resp.response;
+
+			uint32_t times = 0;
+			uint32_t mask = 0;
+			uint32_t shift = 0;
+
+			if (aw->conn_info.long_form)
+			{
+				times = 2;
+				mask = 0xFFFF;
+				shift = 16;
+			}
+			else
+			{
+				times = 4;
+				mask = 0xFF;
+				shift = 8;
+			}
+
+			for (uint32_t i = 0; i < times && n < aw->conn_info.length; ++i)
+			{
+				// We don't need to allocate space for the integer because it fits
+				// inside the size of the pointer to the data
+				const uint64_t data = info & mask;
+				kprintf(" %u\n", data);
+				list_insert_next(&aw->conn_info.lst_conn, NULL, (void*)data);
+				info >>= shift;
+				++n;
+			}
 		}
-		++cad;
 	}
 
-	uint32_t verb = (cad << 28) | 0xF0000;
-	corb_send_command(verb);
-	while (!rirb_has_responses());
-	RIRB_Response resp = rirb_read_response();
+	// Get the volume knob capabilities
+	verb = create_verb(afg->codec, 0, widget, 0xF00, 0x13);
+	resp = poll_command(verb);
+	info = resp.response;
 
-	kprintf("Response: 0x%x - 0x%x\n", 
+	kprintf("Audio Widget VOLK: %d - 0x%x - 0x%x\n", widget, 
 			resp.response, resp.resp_ex);
 
-	verb = (cad << 28) | 0xF0004;
-	corb_send_command(verb);
-	while (!rirb_has_responses());
-	resp = rirb_read_response();
+	aw->volume_knob.delta     = (info >> 7) & 0x1;
+	aw->volume_knob.num_steps = info & 0x7F;
 
-	kprintf("Response: 0x%x - 0x%x\n", 
+	// Read the default configuration
+	verb = create_verb(afg->codec, 0, widget, 0xF1C, 0);
+	resp = poll_command(verb);
+	info = resp.response;
+
+	kprintf("Audio Widget DEFC: %d - 0x%x - 0x%x\n", widget, 
 			resp.response, resp.resp_ex);
+
+	aw->default_config.port_connectivity = (info >> 30) & 0x3;
+	aw->default_config.location          = (info >> 24) & 0x3F;
+	aw->default_config.default_device    = (info >> 20) & 0xF;
+	aw->default_config.connection_type   = (info >> 16) & 0xF;
+	aw->default_config.color             = (info >> 12) & 0xF;
+	aw->default_config.misc              = (info >> 8) & 0xF;
+	aw->default_config.default_assoc     = (info >> 4) & 0xF;
+	aw->default_config.sequence          = info & 0xF;
+
+	// Print some info about the default device
+	const char* device[16] =
+	{
+		"Line Out", "Speaker", "HP Out", "CD",
+		"SPDIF Out", "Digital Other Out", "Modem Line Side",
+		"Modem Handset Side", "Line In", "AUX", "Mic In",
+		"Telephony", "SPDIF In", "Digital Other In", "Reserved",
+		"Other",
+	};
+
+	kprintf("Device Type: %s\n", device[aw->default_config.default_device]);
+
+	// Add this widget to this function groups list
+	list_insert_next(&afg->lst_widgets, NULL, aw);
+}
+
+//=============================================================================
+//=============================================================================
+static AudioWidget* find_widget(AudioFunctionGroup* afg, uint32_t widget)
+{
+	list_element_t* node = list_head(&afg->lst_widgets);
+	while (node != NULL)
+	{
+		AudioWidget* aw = (AudioWidget*)list_data(node);
+
+		if (aw->node == widget)
+		{
+			return aw;
+		}
+
+		node = list_next(node);
+	}
+
+	return NULL;
+}
+
+//=============================================================================
+//=============================================================================
+#define AW_TYPE_OUT_CONV 0x0
+#define AW_TYPE_IN_CONV 0x1
+#define AW_TYPE_PIN_COMPLEX 0x4
+static uint64_t hda_dfs(linked_list_t* path, AudioFunctionGroup* afg, AudioWidget* aw)
+{
+	if (aw->type == AW_TYPE_OUT_CONV ||
+		aw->type == AW_TYPE_IN_CONV)
+	{
+		// We're done we found the end!
+		list_insert_next(path, NULL, aw);
+		return 1;
+	}
+	else if (aw->conn_info.length > 0)
+	{
+		// We did not find it, so search our connections
+		list_element_t* node = list_head(&aw->conn_info.lst_conn);
+		while (node != NULL)
+		{
+			const uint64_t widget_num = (uint64_t)list_data(node);
+
+			// Find it in the AFG list
+			AudioWidget* aw_next = find_widget(afg, widget_num);
+			ASSERT(aw_next != NULL);
+
+			// Recursive call
+			if (hda_dfs(path, afg, aw_next))
+			{
+				// We found the solution, add ourselves to the path
+				list_insert_next(path, NULL, aw);
+				return 1;
+			}
+
+			// We did not find the solution, onto the next connection
+			node = list_next(node);
+		}
+	}
+
+	return 0;
+}
+
+//=============================================================================
+//=============================================================================
+static void hda_setup_connections(AudioFunctionGroup* afg)
+{
+	// The AFG passed in has had all of its widgets read
+	// and now we need to figure out which ones are the
+	// ones we care about and how to use them to achieve
+	// what we want to do.
+	
+	// Start at the pin complexes and look for audio output
+	// converters
+	list_element_t* node = list_head(&afg->lst_widgets);	
+	kprintf("Num widgets: %u\n", list_size(&afg->lst_widgets));
+	while (node != NULL)
+	{
+		AudioWidget* aw = (AudioWidget*)list_data(node);
+		kprintf("Trying: %u\n", aw->node);
+		if (aw->type == AW_TYPE_PIN_COMPLEX &&
+			// Line out
+			aw->default_config.default_device == 0x0)
+		{
+			// Work our way backwards to an audio input converter
+			// or an audio output converter, BFS	
+			linked_list_t path;
+			list_init(&path, hda_alloc, hda_free);
+
+			if (hda_dfs(&path, afg, aw))
+			{
+				// Print the path
+				list_element_t* node = list_head(&path);
+
+				kprintf("Path\n");
+				while (node != NULL)
+				{
+					AudioWidget* aw = (AudioWidget*)list_data(node);
+					kprintf(" %u\n", aw->node);
+					node = list_next(node);
+				}
+
+				AudioOutputPath* aop = (AudioOutputPath*)hda_alloc(sizeof(AudioOutputPath));
+				aop->path = path;
+				list_insert_next(&afg->lst_outputs, NULL, aop);
+			}
+		}
+
+		node = list_next(node);
+	}
+}
+
+//=============================================================================
+//=============================================================================
+static void hda_enumerate_codecs()
+{
+
+	kprintf("DMA LOC: 0x%x\n", hda_dma_phys_loc);
+
+	// Write positions of the DMA engines periodically
+	hda_ptr_32[DPLBASE] = (hda_dma_phys_loc & 0xFFFFFFFF) | 0x1;
+	hda_ptr_32[DPUBASE] = (hda_dma_phys_loc >> 32) & 0xFFFFFFFF;
+
+	hda_enable_corb_dma();
+	hda_enable_rirb_dma();
+
+	uint8_t cad = 0;
+	for (int i = 0; i < 8; ++i, ++cad)
+	{
+		if (!(codecs_available & (1 << i)))
+		{
+			continue;
+		}
+
+		uint32_t verb = (cad << 28) | 0xF0000;
+		RIRB_Response resp = poll_command(verb);
+		kprintf("Response: 0x%x - 0x%x\n", 
+				resp.response, resp.resp_ex);
+
+		// Figure out how many nodes there are, parameter ID 0x4
+		// Response is:
+		//   31-24  |    23:16     |   15:8   |    7:0
+		// Reserved | Start Node # | Reserved | Total # of Nodes
+		verb = (cad << 28) | 0xF0004;
+		resp = poll_command(verb);
+		kprintf("Response: 0x%x - 0x%x\n", 
+				resp.response, resp.resp_ex);
+
+		const uint8_t total_nodes = resp.response & 0xFF;
+		uint8_t start_node = (resp.response >> 16) & 0xFF;
+
+		kprintf("Sub nodes: %u\n", total_nodes);
+
+		for (uint32_t i = 0; i < total_nodes; ++i, ++start_node)
+		{
+			verb = create_verb(cad, 0, start_node, 0xF00, 5);
+			resp = poll_command(verb);
+			kprintf("Function Type: 0x%x - 0x%x\n", 
+					resp.response, resp.resp_ex);
+			if (resp.response == 0x1) // AFG
+			{
+				hda_afg.codec = cad;
+				hda_afg.node = start_node;
+				list_init(&hda_afg.lst_widgets, hda_alloc, hda_free);
+				list_init(&hda_afg.lst_outputs, hda_alloc, hda_free);
+				// Get the capabilities
+				verb = create_verb(cad, 0, start_node, 0xF00, 8);
+				resp = poll_command(verb);
+				kprintf("AFG Caps: 0x%x - 0x%x\n", 
+						resp.response, resp.resp_ex);
+
+				// Get the 'widgets'
+				verb = create_verb(cad, 0, start_node, 0xF00, 4);
+				resp = poll_command(verb);
+				kprintf("Sub nodes: 0x%x - 0x%x\n", 
+						resp.response, resp.resp_ex);
+				uint8_t widget_total = resp.response & 0xFF;
+				uint8_t widget_start = (resp.response >> 16) & 0xFF;
+				kprintf("AFG sub nodes: %u\n", widget_total);
+				for (int j = 0; j < widget_total; ++j, ++widget_start)
+				{
+					read_audio_widget(&hda_afg, widget_start);
+				}
+				//break;
+				cad = 8;
+			}
+		}
+	}
+
+	// Now we need to figure out how to get sound from the buffers
+	// to the speakers
+	hda_setup_connections(&hda_afg);
 }	
 
+//=============================================================================
+//=============================================================================
 static void hda_interrupt_handler(uint64_t vector, uint64_t error)
 {
 	UNUSED(vector);
@@ -568,6 +799,8 @@ static void hda_interrupt_handler(uint64_t vector, uint64_t error)
 	//pic_acknowledge(vector);
 }
 
+//=============================================================================
+//=============================================================================
 static void hda_setup_streams()
 {
 	// Read the GCAP register to see how many streams this device supports
@@ -584,25 +817,81 @@ static void hda_setup_streams()
 	kprintf("Supports 64-bit addressing: %u\n", bdl_64_bit);
 
 	// Setup the data buffers for the streams
+	// The link rate is based off of a 48Khz frame time	
+	// buffers must start on a 128 byte boundary	
+	// needs to be able to contain at least one full packet
+	// length should be a multiple of 128 bytes
+	// use BDLs to inform the hardware
+	
+	list_init(&hda_lst_streams, hda_alloc, hda_free);
+	
+	uint64_t stream_bdl_addr = HDA_STREAM_BASE;
+	uint64_t stream_data_addr = HDA_STREAM_DATA_BASE;
+
+	// Focus on output streams for now
+	for (uint16_t i = 0; i < num_output_streams; ++i)
+	{
+		uint64_t phys_loc = 0;
+		virt_map_page(kernel_table, stream_data_addr,
+				PG_FLAG_RW | PG_FLAG_PCD | PG_FLAG_PWT, PAGE_LARGE, &phys_loc);
+		stream_data_addr += PAGE_LARGE_SIZE;
+
+		Stream* stream = hda_alloc(sizeof(Stream));
+
+		stream->number = i;
+		stream->in_sdctl_offset  = SDCTL0 + i;
+		stream->out_sdctl_offset = SDCTL0 + num_input_streams + i;
+		stream->bdl_info.data_address = stream_data_addr;
+		stream->bdl_info.data_phys_address = phys_loc;
+		stream->bdl_info.data_length = PAGE_LARGE_SIZE;
+
+		virt_map_page(kernel_table, stream_bdl_addr,
+				PG_FLAG_RW | PG_FLAG_PCD | PG_FLAG_PWT, PAGE_SMALL, &phys_loc);
+		stream_bdl_addr += PAGE_SMALL_SIZE;
+
+		stream->bdl_info.bdl_buffer_address = stream_bdl_addr;
+		stream->bdl_info.bdl_buffer_phys_address = phys_loc;
+		stream->bdl_info.bdl_buffer_length = PAGE_SMALL_SIZE;
+
+		list_insert_next(&hda_lst_streams, NULL, stream);
+	}
 }
 
-static uint8_t find_custom(const pci_config_t* config)
+//=============================================================================
+//=============================================================================
+static uint8_t find_custom_first_pass(const pci_config_t* config)
 {
-	return config->vendor_id == 0x8086 &&
-		   config->base_class == 0x4 &&
-		   config->sub_class == 0x3;
+	return config->vendor_id == 0x8086
+		&& (config->device_id == 0x2668
+			 || config->device_id == 0x284B
+			 || config->device_id == 0x1C20);
 }
 
+//=============================================================================
+//=============================================================================
+static uint8_t find_custom_second_pass(const pci_config_t* config)
+{
+	return config->vendor_id == 0x8086
+		&& config->base_class == 0x4
+		&& config->sub_class == 0x3;
+}
+
+//=============================================================================
+//=============================================================================
 void sound_init()
 {
 	kprintf("Initializing sound\n");
 	pci_init();
 
 	// Try to find the correct PCI device
-	pci_hda_config = pci_find_custom(find_custom);
+	pci_hda_config = pci_find_custom(find_custom_first_pass);
 	if (pci_hda_config == NULL)
 	{
-		panic("Failed to find HDA device");
+		pci_hda_config = pci_find_custom(find_custom_second_pass);
+		if (pci_hda_config == NULL)
+		{
+			panic("Failed to find HDA device");
+		}
 	}
 	ASSERT(pci_hda_config->header_type == 0);
 	const header_type_0* pci_hda_hdr = &pci_hda_config->h_type.type_0;
@@ -630,14 +919,17 @@ void sound_init()
 	ASSERT(pci_hda_hdr->bar_sizes[0] == 0x4000);
 	virt_map_phys_range(kernel_table, HDA_MEM_LOC, 
 			((uint64_t)pci_addr_hi << 32) | (pci_addr_lo & (~0xFFF)),
-			PG_FLAG_RW | PG_FLAG_PCD, PAGE_SMALL, 4);
+			PG_FLAG_RW | PG_FLAG_PCD | PG_FLAG_PWT, PAGE_SMALL, 4);
 	virt_map_page(kernel_table, HDA_RING_LOC,
-			PG_FLAG_RW | PG_FLAG_PCD, PAGE_SMALL, NULL);
+			PG_FLAG_RW | PG_FLAG_PCD, PAGE_SMALL, &hda_ring_phys_loc);
+	virt_map_page(kernel_table, HDA_DMA_LOC,
+			PG_FLAG_RW | PG_FLAG_PCD | PG_FLAG_PWT, PAGE_SMALL, &hda_dma_phys_loc);
+	memclr((void*)HDA_DMA_LOC, PAGE_SMALL_SIZE);
 	memclr((void*)HDA_RING_LOC, PAGE_SMALL_SIZE);
 
 	// Enable memory writes
 	uint32_t command = pci_config_read_w(pci_hda_config, PCI_COMMAND);
-	command |= PCI_CMD_MEMORY | PCI_CMD_MASTER;
+	command |= PCI_CMD_MEMORY | PCI_CMD_MASTER | 0x20;
 	pci_config_write_w(pci_hda_config, PCI_COMMAND, command);
 
 	// Make sure the interrupts are all set
@@ -669,25 +961,9 @@ void sound_init()
 	hda_setup_corb();
 	hda_setup_rirb();
 
-	// Enable the DMA engines
-//	hda_enable_corb_dma();
-//	hda_enable_rirb_dma();
+	// Setup the streams
+	hda_setup_streams();
 
 	// Figure out what we have
-//	hda_enumerate_codecs();
-
-	// Try a command
-	uint8_t cad = 0;
-	for (int i = 0; i < 8; ++i)
-	{
-		if (codecs_available & (1 << i))
-		{
-			break;
-		}
-		++cad;
-	}
-
-	uint32_t verb = (cad << 28) | 0xF0004;
-	uint32_t response = hda_send_immediate_command(verb);
-	kprintf("Response: 0x%x\n", response);
+	hda_enumerate_codecs();
 }
