@@ -84,14 +84,16 @@ static void read_command()
 			continue;
 		}
 
-		// Echo the character
-		write_char(key);
-
 		if (key == '\b')
 		{
 			if (command_length > 0)
 			{
 				--command_length;
+			}
+			else
+			{
+				// Don't write the character
+				continue;
 			}
 		}
 		else
@@ -100,6 +102,10 @@ static void read_command()
 			command[command_length] = key;
 			++command_length;
 		}
+
+		// Echo the character
+		write_char(key);
+
 	}
 	command[command_length] = 0;
 
