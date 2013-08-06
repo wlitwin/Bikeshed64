@@ -38,7 +38,7 @@
 #define DPLBASE (0x70/sizeof(uint32_t))
 #define DPUBASE (0x74/sizeof(uint32_t))
 
-#define SDCTL0 (0x80/sizeof(uint32_t))
+#define SDCTL0 0x80
 
 #define VERB_GET_PARAM 0xF00
 #define VERB_SET_POWER_STATE 0x705
@@ -50,6 +50,10 @@
 #define HDA_DMA_LOC  0xFFFFFFFFF000A000
 #define HDA_STREAM_BASE 0xFFFFFFFFF000C000
 #define HDA_STREAM_DATA_BASE 0xFFFFFFFFF0200000
+
+#define AW_TYPE_OUT_CONV 0x0
+#define AW_TYPE_IN_CONV 0x1
+#define AW_TYPE_PIN_COMPLEX 0x4
 
 // Information taken from here:
 // http://www.intel.com/content/dam/www/public/us/en/documents/product-specifications/high-definition-audio-specification.pdf
@@ -245,6 +249,15 @@ typedef struct
 
 typedef struct
 {
+	uint64_t address;
+	uint32_t length;
+	uint32_t ioc;
+} BDL_Entry;
+
+COMPILE_ASSERT(sizeof(BDL_Entry) == 16);
+
+typedef struct
+{
 	// The node number of this widget
 	uint8_t node;
 
@@ -339,15 +352,19 @@ typedef struct
 {
 	uint8_t codec;
 	uint8_t node;
-	linked_list_t lst_widgets;
+	struct
+	{
+		uint8_t base;
+		uint8_t length;
+		AudioWidget** widgets;
+	} nodes;
 	linked_list_t lst_outputs;
 } AudioFunctionGroup;
 
 typedef struct
 {
 	uint8_t number;
-	uint64_t out_sdctl_offset;
-	uint64_t in_sdctl_offset;
+
 	struct
 	{
 		// 0 - 48kHz
@@ -367,7 +384,7 @@ typedef struct
 		// 101 - Divide by 6 (8kHz)
 		// 110 - Divide by 7
 		// 111 - Divide by 8 (6kHz)
-		uint8_t sample_base_rate_devisor;
+		uint8_t sample_base_rate_divisor;
 		// 000 - 8 bits  8-bit container/16-bit boundaries
 		// 001 - 16-bits 16-bit container/16-bit boundaries
 		// 010 - 20-bits 32-bit container/32-bit boundaries
@@ -391,6 +408,25 @@ typedef struct
 		uint64_t bdl_buffer_length;
 	} bdl_info;
 } Stream;
+
+typedef struct
+{
+	// Combines SDCTL & SDSTS, SDCTL is only 24 bits...
+	union
+	{
+		uint32_t all;
+		uint8_t bytes[4];
+	} SDCTL_STS;
+	uint32_t SDLPIB;
+	uint32_t SDCBL;
+	uint16_t SDLVI;
+	uint16_t SDFIFOW;
+	uint16_t SDFIFOS;
+	uint16_t SDFMT;
+	uint64_t SDBDP;
+} StreamReg;
+
+COMPILE_ASSERT(sizeof(StreamReg) == 0x20);
 
 #define CORB_ENT_SIZE 4
 #define CORB_ALIGN 128
