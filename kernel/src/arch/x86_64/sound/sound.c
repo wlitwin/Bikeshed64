@@ -1,5 +1,6 @@
 #include "hda.h"
 #include "sound.h"
+#include "music.h"
 
 #include "arch/x86_64/textmode.h"
 
@@ -27,6 +28,9 @@ static volatile uint32_t* hda_ptr_32 = (volatile uint32_t*) HDA_MEM_LOC;
 static volatile uint16_t* hda_ptr_16 = (volatile uint16_t*) HDA_MEM_LOC;
 static volatile uint8_t*  hda_ptr_8  = (volatile uint8_t*)  HDA_MEM_LOC;
 static uint16_t codecs_available = 0;
+static uint8_t hda_num_output_streams = 0;
+static uint8_t hda_num_input_streams = 0;
+static volatile StreamReg* hda_stream_regs;
 
 //=============================================================================
 // hda_alloc
@@ -478,7 +482,7 @@ static void hda_enable_interrupts()
 //   afg - A pointer to the AudioFunctionGroup structure
 //   widget - The node ID of the widget to interrogate
 //=============================================================================
-static void read_audio_widget(AudioFunctionGroup* afg, uint32_t widget)
+static AudioWidget* read_audio_widget(AudioFunctionGroup* afg, uint32_t widget)
 {
 	uint32_t verb = create_verb(afg->codec, 0, widget, 0xF00, 9);
 	RIRB_Response resp = poll_command(verb);	
@@ -524,9 +528,6 @@ static void read_audio_widget(AudioFunctionGroup* afg, uint32_t widget)
 	info = resp.response;
 	kprintf("Audio Widget PCAP: %d - 0x%x - 0x%x\n", widget, 
 			resp.response, resp.resp_ex);
-//#define AW_TYPE_PIN 0x4
-//#define AW_TYPE_IN_AMP 0x1
-//#define AW_TYPE_OUT_AMP 0x0
 
 	aw->pin_caps.high_bit_rate       = (info >> 27) & 0x1;
 	aw->pin_caps.display_port        = (info >> 24) & 0x1;
@@ -660,8 +661,7 @@ static void read_audio_widget(AudioFunctionGroup* afg, uint32_t widget)
 
 	kprintf("Device Type: %s\n", device[aw->default_config.default_device]);
 
-	// Add this widget to this function groups list
-	list_insert_next(&afg->lst_widgets, NULL, aw);
+	return aw;
 }
 
 //=============================================================================
@@ -679,17 +679,13 @@ static void read_audio_widget(AudioFunctionGroup* afg, uint32_t widget)
 //=============================================================================
 static AudioWidget* find_widget(AudioFunctionGroup* afg, uint32_t widget)
 {
-	list_element_t* node = list_head(&afg->lst_widgets);
-	while (node != NULL)
+	for (uint8_t i = 0; i < afg->nodes.length; ++i)
 	{
-		AudioWidget* aw = (AudioWidget*)list_data(node);
-
+		AudioWidget* aw = afg->nodes.widgets[i];
 		if (aw->node == widget)
 		{
 			return aw;
 		}
-
-		node = list_next(node);
 	}
 
 	return NULL;
@@ -710,13 +706,10 @@ static AudioWidget* find_widget(AudioFunctionGroup* afg, uint32_t widget)
 // Returns:
 //   1 if successfully found a path from a port to a converter, 0 otherwise
 //=============================================================================
-#define AW_TYPE_OUT_CONV 0x0
-#define AW_TYPE_IN_CONV 0x1
-#define AW_TYPE_PIN_COMPLEX 0x4
 static uint64_t hda_dfs(linked_list_t* path, AudioFunctionGroup* afg, AudioWidget* aw)
 {
-	if (aw->type == AW_TYPE_OUT_CONV ||
-		aw->type == AW_TYPE_IN_CONV)
+	if (aw->type == AW_TYPE_OUT_CONV)// ||
+		//aw->type == AW_TYPE_IN_CONV)
 	{
 		// We're done we found the end!
 		list_insert_next(path, NULL, aw);
@@ -769,15 +762,14 @@ static void hda_setup_connections(AudioFunctionGroup* afg)
 	
 	// Start at the pin complexes and look for audio output
 	// converters
-	list_element_t* node = list_head(&afg->lst_widgets);	
-	kprintf("Num widgets: %u\n", list_size(&afg->lst_widgets));
-	while (node != NULL)
+	for (uint8_t i = 0; i < afg->nodes.length; ++i)
 	{
-		AudioWidget* aw = (AudioWidget*)list_data(node);
+		kprintf("Num widgets: %u\n", afg->nodes.length);
+		AudioWidget* aw = afg->nodes.widgets[i];
 		kprintf("Trying: %u\n", aw->node);
-		if (aw->type == AW_TYPE_PIN_COMPLEX &&
-			// Line out
-			aw->default_config.default_device == 0x0)
+		if (aw->type == AW_TYPE_PIN_COMPLEX)// &&
+				// Line out
+				//aw->default_config.default_device == 0x0)
 		{
 			// Work our way backwards to an audio input converter
 			// or an audio output converter, BFS	
@@ -802,9 +794,9 @@ static void hda_setup_connections(AudioFunctionGroup* afg)
 				list_insert_next(&afg->lst_outputs, NULL, aop);
 			}
 		}
-
-		node = list_next(node);
 	}
+
+	// Make sure we found some paths
 }
 
 //=============================================================================
@@ -815,7 +807,6 @@ static void hda_setup_connections(AudioFunctionGroup* afg)
 //=============================================================================
 static void hda_enumerate_codecs()
 {
-
 	kprintf("DMA LOC: 0x%x\n", hda_dma_phys_loc);
 
 	// Write positions of the DMA engines periodically
@@ -862,14 +853,12 @@ static void hda_enumerate_codecs()
 			{
 				hda_afg.codec = cad;
 				hda_afg.node = start_node;
-				list_init(&hda_afg.lst_widgets, hda_alloc, hda_free);
 				list_init(&hda_afg.lst_outputs, hda_alloc, hda_free);
 				// Get the capabilities
 				verb = create_verb(cad, 0, start_node, 0xF00, 8);
 				resp = poll_command(verb);
 				kprintf("AFG Caps: 0x%x - 0x%x\n", 
 						resp.response, resp.resp_ex);
-
 				// Get the 'widgets'
 				verb = create_verb(cad, 0, start_node, 0xF00, 4);
 				resp = poll_command(verb);
@@ -877,13 +866,19 @@ static void hda_enumerate_codecs()
 						resp.response, resp.resp_ex);
 				uint8_t widget_total = resp.response & 0xFF;
 				uint8_t widget_start = (resp.response >> 16) & 0xFF;
+				hda_afg.nodes.base = widget_start;
+				hda_afg.nodes.length = widget_total;
+				hda_afg.nodes.widgets = 
+					(AudioWidget**)hda_alloc(hda_afg.nodes.length*sizeof(AudioWidget*));
 				kprintf("AFG sub nodes: %u\n", widget_total);
 				for (int j = 0; j < widget_total; ++j, ++widget_start)
 				{
-					read_audio_widget(&hda_afg, widget_start);
+					AudioWidget* aw = read_audio_widget(&hda_afg, widget_start);
+					hda_afg.nodes.widgets[j] = aw;
 				}
 				//break;
 				cad = 8;
+				break;
 			}
 		}
 	}
@@ -920,12 +915,15 @@ static void hda_setup_streams()
 	// Read the GCAP register to see how many streams this device supports
 	const uint16_t gcap = hda_ptr_16[GCAP];
 
-	const uint8_t num_output_streams = (gcap >> 12) & 0xF;
-	const uint8_t num_input_streams = (gcap >> 8)  & 0xF;
+	hda_num_output_streams = (gcap >> 12) & 0xF;
+	hda_num_input_streams = (gcap >> 8)  & 0xF;
 
-	ASSERT(num_output_streams >= 1);
+	hda_stream_regs = (volatile StreamReg*)(HDA_MEM_LOC + SDCTL0);
 
-	kprintf("Supports: %u output streams %u input streams\n", num_output_streams, num_input_streams);
+	ASSERT(hda_num_output_streams >= 1);
+
+	kprintf("Supports: %u output streams %u input streams\n", 
+			hda_num_output_streams, hda_num_input_streams);
 
 	const uint8_t bdl_64_bit = gcap & 0x1;
 	kprintf("Supports 64-bit addressing: %u\n", bdl_64_bit);
@@ -936,14 +934,14 @@ static void hda_setup_streams()
 	// needs to be able to contain at least one full packet
 	// length should be a multiple of 128 bytes
 	// use BDLs to inform the hardware
-	
+
 	list_init(&hda_lst_streams, hda_alloc, hda_free);
-	
+
 	uint64_t stream_bdl_addr = HDA_STREAM_BASE;
 	uint64_t stream_data_addr = HDA_STREAM_DATA_BASE;
 
 	// Focus on output streams for now
-	for (uint16_t i = 0; i < num_output_streams; ++i)
+	for (uint16_t i = 0; i < hda_num_output_streams; ++i)
 	{
 		uint64_t phys_loc = 0;
 		virt_map_page(kernel_table, stream_data_addr,
@@ -953,8 +951,7 @@ static void hda_setup_streams()
 		Stream* stream = hda_alloc(sizeof(Stream));
 
 		stream->number = i;
-		stream->in_sdctl_offset  = SDCTL0 + i;
-		stream->out_sdctl_offset = SDCTL0 + num_input_streams + i;
+
 		stream->bdl_info.data_address = stream_data_addr;
 		stream->bdl_info.data_phys_address = phys_loc;
 		stream->bdl_info.data_length = PAGE_LARGE_SIZE;
@@ -971,6 +968,215 @@ static void hda_setup_streams()
 	}
 }
 
+#define STREAM_CTL_DEIE 0x10 // Descriptor error interrupt enable
+#define STREAM_CTL_FEIE 0x08 // FIFO error interrupt enable
+#define STREAM_CTL_IOCE 0x04 // Interrupt on completion enable
+#define STREAM_CTL_SRUN 0x02 // Stream run
+#define STREAM_CTL_SRST 0x01 // Stream reset
+static uint16_t stream_get_format(const Stream* s)
+{
+	return ((s->descriptor.sample_base_rate & 0x1) << 14) |
+		   ((s->descriptor.sample_base_rate_multiple & 0x7) << 11) |
+		   ((s->descriptor.sample_base_rate_divisor & 0x7) << 8) |
+		   ((s->descriptor.bits_per_sample & 0x7) << 4) |
+		   (s->descriptor.number_of_channels & 0xF);
+}
+
+static volatile StreamReg* stream_get_sreg(const Stream* s, uint8_t output)
+{
+	volatile StreamReg* s_reg = output ? 
+		&hda_stream_regs[s->number+hda_num_input_streams] :
+		&hda_stream_regs[s->number];
+	return s_reg;
+}
+
+static void stream_enable(const Stream* s, uint8_t output)
+{
+	volatile StreamReg* s_reg = stream_get_sreg(s, output);
+
+	// Make sure the stream is not running
+	s_reg->SDCTL_STS.bytes[0] |= 0x2;
+	while (!(s_reg->SDCTL_STS.bytes[0] & 0x2));
+}
+
+static void stream_disable(const Stream* s, uint8_t output)
+{
+	volatile StreamReg* s_reg = stream_get_sreg(s, output);
+
+	// Make sure the stream is not running
+	s_reg->SDCTL_STS.bytes[0] &= ~0x2;
+	while (s_reg->SDCTL_STS.bytes[0] & 0x2);
+}
+
+static void configure_stream(const Stream* s, uint8_t output)
+{
+	volatile StreamReg* s_reg = stream_get_sreg(s, output);
+
+	// Set the stream number
+	s_reg->SDCTL_STS.bytes[2] &= 0xF;
+	s_reg->SDCTL_STS.bytes[2] |= ((s->number+1) & 0xF) << 4;
+	s_reg->SDCTL_STS.bytes[0] |= 1;
+	kprintf("\n\n\nSREG: 0x%x\n", s_reg);
+	uint32_t i = 0;
+	for (; i < 8; ++i)
+	{
+		kprintf("REG: 0x%x\n", hda_ptr_32[((0x80+i*0x20)/4)]);
+	}
+
+	// Make sure the stream is not running
+	__asm__ volatile("cli");
+	stream_disable(s, output);
+	__asm__ volatile("cli");
+
+	// Reset the stream
+	s_reg->SDCTL_STS.all |= 0x1;
+	kprintf("Status1: 0x%x\n", s_reg->SDCTL_STS.all);
+	while (!(s_reg->SDCTL_STS.all & 0x1));
+	kprintf("Status2: 0x%x\n", s_reg->SDCTL_STS.all);
+	s_reg->SDCTL_STS.all &= ~0x1;
+	while (s_reg->SDCTL_STS.all & 0x1);
+	__asm__ volatile("cli");
+	//__asm__ volatile("hlt");
+
+	// Set the stream number
+	s_reg->SDCTL_STS.bytes[2] &= 0xF;
+	s_reg->SDCTL_STS.bytes[2] |= ((s->number+1) & 0xF) << 4;
+
+	// Set high priority traffic
+	s_reg->SDCTL_STS.bytes[2] |= 0x4; 
+
+	// Setup the buffer descriptor registers
+	s_reg->SDCBL = s->bdl_info.bdl_buffer_length;
+
+	// Set the format register
+	s_reg->SDFMT = stream_get_format(s);
+
+	// Set the buffer descriptor list pointer registers
+	s_reg->SDBDP = s->bdl_info.bdl_buffer_phys_address;
+}
+
+
+//=============================================================================
+// hda_test_sound 
+//
+// Plays a sample sound file
+//=============================================================================
+static void hda_test_sound()
+{
+	ASSERT(list_size(&hda_afg.lst_outputs) > 0);
+
+	kprintf("Paths: %u\n", list_size(&hda_afg.lst_outputs));
+	// Go through the output chain and set everything up
+	AudioOutputPath* aop = (AudioOutputPath*)list_data(list_next(list_head(&hda_afg.lst_outputs)));
+	ASSERT(list_size(&aop->path) > 0);
+
+	list_element_t* node = list_head(&aop->path);
+	while (node != NULL)
+	{
+		AudioWidget* aw = (AudioWidget*)list_data(node);
+
+		// Set the output amplifier parameters
+		if (aw->out_amp_present)
+		{
+			uint32_t verb = create_verb(hda_afg.codec, 0, aw->node,
+					0xB00, (1 << 15) | (1 << 13));
+			RIRB_Response resp = poll_command(verb);
+			kprintf("Getting amp: 0x%x\n", resp.response);
+
+			kprintf("Setting amp: %u\n", aw->node);
+			uint16_t data = (0x1 << 15)	| (0x3 << 12) | 0xA;
+			//	((aw->out_amp_caps.num_steps-1)*aw->out_amp_caps.step_size);
+			kprintf("Steps: %u - Size: %u\n", aw->out_amp_caps.num_steps,
+					aw->out_amp_caps.step_size);
+			verb = create_verb(hda_afg.codec, 0, aw->node, 0x300, data);
+			resp = poll_command(verb);
+			//kprintf("Set: 0x%x\n", resp.response);
+
+			verb = create_verb(hda_afg.codec, 0, aw->node,
+					0xB00, (1 << 15) | (1 << 13));
+			resp = poll_command(verb);
+			kprintf("After Set: 0x%x\n", resp.response);
+		}
+
+		// Check what type of widget this is
+		if (aw->type == AW_TYPE_PIN_COMPLEX)
+		{
+			kprintf("Test Pin Complex\n");
+			// Make sure it supports output
+			ASSERT(aw->pin_caps.output_capable);
+
+			// Enable the output	
+			uint32_t verb = create_verb(hda_afg.codec, 0, aw->node, 0xF07, 0);
+			RIRB_Response resp = poll_command(verb);
+			kprintf("Response: 0x%x\n", resp.response);
+			// Enable the output
+			resp.response |= 0x40;
+			verb = create_verb(hda_afg.codec, 0, aw->node, 0x707, resp.response & 0xFF);
+			resp = poll_command(verb);
+		}
+		else if (aw->type == AW_TYPE_OUT_CONV)
+		{
+			// Setup the stream, stream 0 is by convention reserved...
+			ASSERT(list_size(&hda_lst_streams) > 0);
+
+			Stream* stream = (Stream*)list_data(list_tail(&hda_lst_streams));
+			kprintf("Setting output converter - Stream %u\n", stream->number);
+			uint32_t verb = create_verb(hda_afg.codec, 0, aw->node, 0xF06, 0);
+			RIRB_Response resp = poll_command(verb);
+			//kprintf("OUTPUT: 0x%x\n", resp.response);
+			
+			// Set the converter channel count = 1
+			verb = create_verb(hda_afg.codec, 0, aw->node, 0x72D, 0);
+			poll_command(verb);
+
+			uint8_t data = ((stream->number+1) << 4) | 0x0; // Stream 1, channel 0 = lowest
+			verb = create_verb(hda_afg.codec, 0, aw->node, 0x706, data);
+			poll_command(verb);
+
+			// Setup the stream's parameters
+			stream->descriptor.sample_base_rate = 0;
+			stream->descriptor.sample_base_rate_multiple = 0;
+			stream->descriptor.sample_base_rate_divisor = 0x3;
+			stream->descriptor.bits_per_sample = 8;
+			stream->descriptor.number_of_channels = 0;
+			configure_stream(stream, 1);
+
+			// Set the converter format
+			uint16_t stream_format = stream_get_format(stream);
+			verb = create_verb(hda_afg.codec, 0, aw->node, 0x200, stream_format);
+			poll_command(verb);
+
+			// Set the streams BDL
+			BDL_Entry* bdl = (BDL_Entry*)stream->bdl_info.bdl_buffer_address;
+			bdl[0].address = stream->bdl_info.data_phys_address;
+			bdl[0].length = small_wav_len;
+
+			volatile StreamReg* s_reg = stream_get_sreg(stream, 1);
+			s_reg->SDLVI = 1;
+
+			uint8_t* music = (uint8_t*)stream->bdl_info.data_address;
+			uint32_t m_i = 0;
+			for (uint32_t i = 0; i < small_wav_len; ++i)
+			{
+				music[m_i++] = 0;
+				music[m_i++] = small_wav[i];
+			}
+
+			// Need at least two entries
+			bdl[1] = bdl[0];
+		}
+
+		node = list_next(node);
+	}
+
+	// Enable the stream
+	Stream* stream = (Stream*)list_data(list_tail(&hda_lst_streams));
+	kprintf("Stream SDCTL: 0x%x\n", stream_get_sreg(stream, 1)->SDCTL_STS.all);
+	volatile StreamReg* s_reg = stream_get_sreg(stream, 1);
+	stream_enable(stream, 1);
+	kprintf("Stream SDCTL2: 0x%x\n", s_reg->SDCTL_STS.all);
+}
+
 //=============================================================================
 // find_custom_first_pass
 //
@@ -982,8 +1188,8 @@ static uint8_t find_custom_first_pass(const pci_config_t* config)
 {
 	return config->vendor_id == 0x8086
 		&& (config->device_id == 0x2668
-			 || config->device_id == 0x284B
-			 || config->device_id == 0x1C20);
+				|| config->device_id == 0x284B
+				|| config->device_id == 0x1C20);
 }
 
 //=============================================================================
@@ -1028,9 +1234,9 @@ void sound_init()
 
 	kprintf("Found PCI Device:\n");
 	kprintf("Vendor: 0x%x - Device: 0x%x - Rev: 0x%x\n",
-		pci_hda_config->vendor_id, pci_hda_config->device_id, pci_hda_config->revision);
+			pci_hda_config->vendor_id, pci_hda_config->device_id, pci_hda_config->revision);
 	kprintf("Subsytem Vendor: 0x%x - Subsystem ID: 0x%x\n",
-		pci_hda_hdr->subsystem_vendor_id, pci_hda_hdr->subsystem_id);
+			pci_hda_hdr->subsystem_vendor_id, pci_hda_hdr->subsystem_id);
 	kprintf("Header Type: %d\n", pci_hda_config->header_type);
 	for (int i = 0; i < 6; ++i)
 	{
@@ -1096,4 +1302,9 @@ void sound_init()
 
 	// Figure out what we have
 	hda_enumerate_codecs();
+
+	kprintf("Playing sound...\n");
+
+	// Try sound
+	hda_test_sound();
 }
