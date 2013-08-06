@@ -128,6 +128,8 @@ uint8_t virt_map_phys_range(void* table, const uint64_t virt_addr, const uint64_
 
 	for (uint64_t i = 0; i < num_pages; ++i)
 	{
+		kprintf("Mapping: 0x%x to 0x%x\n", cur_virt, cur_phys);
+
 		const uint8_t retVal = virt_map_phys(table, cur_virt, cur_phys, flags, page_size);
 		if (!retVal) 
 		{
@@ -155,6 +157,7 @@ uint8_t virt_map_phys(void* _table, const uint64_t virt_addr, const uint64_t phy
 	const uint64_t pdt_index  = PDT_INDEX(virt_addr);
 	const uint64_t pt_index   = PT_INDEX(virt_addr);
 
+	kprintf("Map Page: Mapping: 0x%x to 0x%x\n", virt_addr, phys_addr);
 	kprintf("PML4: %u\n", pml4_index);
 	kprintf("PDPT: %u\n", pdpt_index);
 	kprintf("PDT : %u\n", pdt_index);
