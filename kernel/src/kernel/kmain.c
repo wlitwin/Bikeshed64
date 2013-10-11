@@ -33,10 +33,10 @@ void kmain(void)
 	syscalls_init();
 
 	/* Initialize the sound driver */
-	sound_init();
+//	sound_init();
 
 	/* Setup the init process */
-	//create_init_process();
+	create_init_process();
 
 	/* Wait forever, should not happen */
 	while (1) {
